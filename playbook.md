@@ -9,12 +9,10 @@
 
 ## 0. 开工自检
 
-```bash
+```sh
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3420/    # 200 = mcctl 在（必需）
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3421/    # 200 = AdvancedInfoFetcher 在
 curl -s http://127.0.0.1:3420/mods                                 # 看装了哪些模组
-curl -s http://127.0.0.1:3420/                                     # mcctl 使用说明（§1 的原文）
-curl -s http://127.0.0.1:3421/                                     # aif 使用说明（§2 的原文）
 ```
 
 装了哪些模组，决定了能用哪些手段：
@@ -29,7 +27,7 @@ curl -s http://127.0.0.1:3421/                                     # aif 使用�
 `bt` 命令依赖 Baritone；没装时它只会往聊天栏发 `#...`，不会执行。
 
 **接口原文**：`GET :3420/` 和 `GET :3421/` 各自返回所在模组的完整使用说明，是接口的权威定义。
-下面 §1–§3 是它们的精简版（实测于 mcctl 1.2.0 / advanced-info-fetch 1.3.0 / craftcmd 1.2.0 /
+下面 §1–§3 是它们的精简版（实测于 mcctl 1.3.0 / advanced-info-fetch 1.3.0 / craftcmd 1.2.0 /
 Baritone 1.19.0，Minecraft 26.2 + Fabric Loader 0.19.5）。**对不上时以那两个接口的实时全文为准。**
 
 ---
@@ -115,7 +113,7 @@ minecraft:haste 2 95
 | `方位` / `yaw` / `pitch` | 朝向角度，1 位小数；pitch=90 是正下方 |
 | `选中` | 快捷栏选中格 1–9 |
 | `生命值` / `饱食度` / `饱和度` | 危险判断：血少就撤，饿了自己找吃的 |
-| `效果：` | **仅有效果时出现**，按效果 ID 排序；每行 `<效果ID> <等级> <剩余秒数>`，永久效果剩余秒数为 `无限` |
+| `效果：` | 仅有效果时出现；每行 `<效果ID> <等级> <剩余秒数>`，永久效果剩余秒数为 `无限` |
 
 ### `GET :3421/inventory`
 
@@ -167,18 +165,45 @@ minecraft:stone 64
 | --- | --- | --- | --- |
 | isDown（按住持续生效） | `W` `A` `S` `D`、`mouse left/right` | ✅ | 走路、挖掘、攻击 |
 | consumeClick（点按触发一次） | `E`、`1`~`9`、`Q` | ✅ | 开背包 / 切格 / 丢弃 |
-| consumeClick | `T` | ⚠️ **开得了、打不了字** | 见下 |
+| consumeClick | `T` | ✅ | 打开聊天框（打字见下） |
 | 特判 | `esc`、`F3` | ✅ | `esc` 关界面，世界里开暂停菜单 |
 | 滚轮 | `mouse scroll n` | ✅ 但一次只走一格 | 切格用 `/inventory` 更省事 |
 
-**`T` 是陷阱，不要按。** `T` 确实会打开聊天输入框，但 mcctl 只把按键转发成
-`Screen#keyPressed`，**从不调用 `Screen#charTyped`**——而原版 `EditBox` 的字符插入走的是后者，
-所以**任何字符都打不进去**。更麻烦的是聊天框一旦开着，后续所有按键/鼠标都被转发给它，
-`W`、`mouse move` 全部失灵，看起来像"游戏卡死"。
-发 `esc` 就能关掉它，输入立刻恢复。
+### 打字：`type` / `typeEnter`
 
-> 推论：只能发送键码、不能发送字符 —— 任何需要"打字"的界面（聊天、铁砧命名、告示牌）都别碰。
-> 发聊天/指令/Baritone 统一走 **`chat <文本>`** 和 **`bt <命令>`**。
+字符走原版 `Screen#charTyped`，所以能打进文本框。
+
+| 命令 | 作用 |
+| --- | --- |
+| `type <文本>` | 往当前聚焦的文本框逐字输入；文本里的 `\n` 表示回车 |
+| `typeEnter` | 在文本框里按回车（发送聊天内容） |
+
+```sh
+curl -X POST --data-binary 'T 50'                      http://127.0.0.1:3420   # 打开聊天框
+curl -X POST --data-binary 'type hello'                http://127.0.0.1:3420   # 打字
+curl -X POST --data-binary 'typeEnter'                 http://127.0.0.1:3420   # 发送
+curl -X POST --data-binary 'type hello\n'              http://127.0.0.1:3420   # 打字+回车，一条搞定
+curl -X POST --data-binary $'T 50\ntype hi\ntypeEnter' http://127.0.0.1:3420   # 一个请求走完
+```
+
+* **打字前要先打开聊天框**（`T 50`）。没有任何聚焦文本框时 `type` 返回 400。
+* 只有聊天框（以及创造模式背包的搜索框）能打字；**铁砧命名、告示牌、书与笔不支持**。
+  发聊天/指令/Baritone 更省事的做法仍然是 **`chat <文本>`** 和 **`bt <命令>`**（不经过聊天框，更快）。
+* `type` 里只有 `\n` 是转义（回车），其余反斜杠按字面处理。
+* 含 `type`/`typeEnter` 的请求会**同步执行完再返回**（其它请求仍是"排队后立刻返回"）。
+
+### 聊天框开着时按键怎么走
+
+| 输入 | 行为 |
+| --- | --- |
+| `type` / `typeEnter` | 打进聊天框 |
+| `E` / `Q` / `1`~`9` | **自动关掉聊天框**，再执行开背包 / 丢弃 / 切格 |
+| 方向键 `BACKSPACE` `ENTER` `TAB` | 依旧作用在聊天框（编辑 / 发送 / 补全） |
+| `esc` | 关掉聊天框 |
+| `W` `A` `S` `D` `SPACE` `SHIFT` | **不关聊天框**，直接控制游戏（可以边开着聊天框走路） |
+| `mouse move` / `left` / `right` / `scroll` | 直接作用于世界 |
+
+所以聊天框误开后，发 `esc` 关掉，或者直接发 `E`/`W` 继续操作都行。
 
 * 开背包 `E 50`（再按一次关）。**2×2 配方（木板/木棍/工作台）只要背包界面开着就能 `/craft`**。
 * 切快捷栏：直接按 `1`~`9`；`chat /inventory <物品id> <1-9>` 更好用（按 id 找，不用记位置）。
@@ -191,11 +216,11 @@ minecraft:stone 64
 
 ## 4. 高层动作：cmdCraft
 
-四条客户端指令，**服务端不用装任何东西**。它们和玩家亲手点格子完全等价（发的是原版点击包）。
+四条客户端指令。和玩家亲手点格子等价。
 
 ### `/craft <物品id> [数量]`
 
-```bash
+```sh
 curl -s -X POST --data-binary 'chat /craft stone_pickaxe'      http://127.0.0.1:3420
 curl -s -X POST --data-binary 'chat /craft oak_planks 8'       http://127.0.0.1:3420
 curl -s -X POST --data-binary 'chat /craft crafting_table'     http://127.0.0.1:3420
@@ -206,14 +231,14 @@ curl -s -X POST --data-binary 'chat /craft crafting_table'     http://127.0.0.1:
 * 合成格里有东西时会报「合成格不为空」——**把界面关掉再打开**就清空了
   （原版会把格子里的东西退回背包），**不需要用鼠标一个个点回背包**。
 * 打开界面：**背包 2×2 用 `E 50`**；工作台 3×3 要先把工作台放下去，再走过去**右键**它（准星判定）。
-* 3×3 配方（镐/剑/斧/熔炉/铁砧…）**必须开着工作台**，否则报「请先打开工作台」。
+* 3×3 配方（镐/剑/斧/熔炉/铁砧…）必须开着工作台。
 * 材料不够时会报 `原料不足：<物品> 需要 N 个`——**先看 `/inventory` 备齐**，别凭记忆（木棍常常是漏项）。
 * 配方必须已在客户端配方书里（原版规则：拿到材料就解锁）。
-* 任一检查不过就**什么都不做**，不会半途消耗材料。
+* 任一检查不过就什么都不做，不会半途消耗材料。
 
 ### `/inventory <物品id> [1-9]`
 
-```bash
+```sh
 curl -s -X POST --data-binary 'chat /inventory torch 2'    http://127.0.0.1:3420   # 火把换到第 2 格
 curl -s -X POST --data-binary 'chat /inventory iron_pickaxe 1' http://127.0.0.1:3420
 ```
@@ -223,7 +248,7 @@ curl -s -X POST --data-binary 'chat /inventory iron_pickaxe 1' http://127.0.0.1:
 
 ### `/furnace put|get <raw|fuel|product> <物品id> [数量]`
 
-```bash
+```sh
 curl -s -X POST --data-binary 'chat /furnace put raw raw_iron 8'  http://127.0.0.1:3420
 curl -s -X POST --data-binary 'chat /furnace put fuel coal 4'     http://127.0.0.1:3420
 curl -s -X POST --data-binary 'chat /furnace get product'         http://127.0.0.1:3420
@@ -236,7 +261,7 @@ curl -s -X POST --data-binary 'chat /furnace get product'         http://127.0.0
 
 ### `/chest put|get <物品id> [数量]`
 
-```bash
+```sh
 curl -s -X POST --data-binary 'chat /chest put cobblestone 64'  http://127.0.0.1:3420
 curl -s -X POST --data-binary 'chat /chest get iron_ingot 16'   http://127.0.0.1:3420
 ```
@@ -248,7 +273,7 @@ curl -s -X POST --data-binary 'chat /chest get iron_ingot 16'   http://127.0.0.1
 
 ## 5. Baritone
 
-```bash
+```sh
 curl -s -X POST --data-binary 'bt mine oak_log'    http://127.0.0.1:3420
 curl -s -X POST --data-binary 'bt mine iron_ore'   http://127.0.0.1:3420
 curl -s -X POST --data-binary 'bt stop'            http://127.0.0.1:3420
@@ -292,7 +317,7 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 
 ### ④ 校验
 
-* **截图有延迟**：发完命令等 3~5 秒再截；两张截图 md5 相同只说明画面没更新，不代表命令失败。
+* **截图有延迟**：发完命令等 3~5 秒再截；两张截图相同只说明画面没更新，不代表命令失败。
 * **对账**：动作前后各读一次 `/inventory`，看材料少了多少、产物多了多少。
 * **长任务**：Baritone 在跑时定期 `/info` 看坐标变化；`bt stop` 后必须 `/inventory` 对账。
 * **记坐标**：基地、熔炉、矿洞入口、传送门，都用 `/info` 读出来记下。
@@ -346,7 +371,7 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 | 阶段 | 做法 |
 | --- | --- |
 | 1 | `bt mine oak_log` → 工作台 → 木镐 → `bt mine stone` → 石镐 → `/craft furnace` |
-| 2 | `bt mine coal_ore`（燃料）+ `bt mine iron_ore` → 熔炉冶炼 → **铁镐**、铁剑、盾，有余力再做铁甲 |
+| 2 | `bt mine coal_ore`（燃料）+ `bt mine iron_ore` → 熔炉冶炼 → **铁镐**、铁剑、盾，再做铁甲 |
 | 3 | 备好进末地的物资：食物、垫脚用的方块（圆石）、弓+箭，或者**床**（炸龙用） |
 | 4 | `bt goto 1697 -2 1124` 赶路（约 1700 格）；到了附近找传送门房间 |
 | 5 | 跳进传送门 → 末地 → 打**末影龙** |
@@ -354,7 +379,7 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 出发前用 `/info`、`/inventory` 自查：血和饱食度是满的、手上有武器、背包里有方块和食物。
 
 传送门在 **y=-2**，通常埋在地下：如果 `bt goto` 走不到，就自己往下挖到那个高度，
-靠近后再对着传送门方块右键（或者直接走进去）。
+靠近后再走进去。
 
 ### 末地打法
 
@@ -372,7 +397,9 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 
 | 坑 | 对策 |
 | --- | --- |
-| 按了 `T`，之后按键全失灵、画面像卡死 | 聊天框开着且打不进字（§3）→ 发 `esc` 关掉 |
+| 聊天框开着，想开背包/丢东西/切格 | 直接发 `E`/`Q`/`1`~`9`，会先自动关掉聊天框再执行（§3）；发 `esc` 也能关 |
+| `type` 报 400 | 当前没有聚焦的文本框 → 先 `T 50` 打开聊天框；铁砧命名/告示牌/书不支持 |
+| `type` 打出来的字不对 | `type` 里只有 `\n` 是转义（回车），其余反斜杠按字面处理 |
 | 所有输入都没反应、帧也不更新 | 多半是 `esc` 开的暂停菜单或某个界面开着 → 发 `esc` 退出，再用 `W` 试一下 |
 | 想合成却打不开合成格 | 2×2 用 `E 50` 开背包；3×3 先放工作台再右键它 |
 | `/craft` 报 `原料不足：<物品> 需要 N 个` | 材料没备够（木棍最容易漏），先读 `/inventory` 再补 |
