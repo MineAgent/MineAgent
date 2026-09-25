@@ -12,7 +12,7 @@ HTTP 接口和聊天指令，LLM 只要会发请求，就能从空手一路玩�
 | 仓库 | 必需性 | 接口 | 作用 |
 | --- | --- | --- | --- |
 | [**mcctl**](https://github.com/MineAgent/mcctl) | **必需** | `127.0.0.1:3420` | **身体**：按键 / 鼠标 / 视角 / 滚轮 / Baritone / 聊天，另有 `GET /prtsc` 截图、`GET /mods` 模组列表 |
-| [**AdvancedInfoFetcher**](https://github.com/MineAgent/AdvancedInfoFetcher) | 可选 | `127.0.0.1:3421` | **眼睛+耳朵**：`GET /info` 坐标 / 朝向 / 生命 / 饱食 / 状态效果，`GET /inventory` 背包 / 副手 / 盔甲 / 熔炉 / 箱子，`GET /msg` 聊天栏回显（指令输出 / Baritone / 报错），`GET /sound` 播放过的声音 ID |
+| [**AdvancedInfoFetcher**](https://github.com/MineAgent/AdvancedInfoFetcher) | 可选 | `127.0.0.1:3421` | **眼睛+耳朵**：`GET /info` 坐标 / 朝向 / 生命 / 饱食 / 状态效果，`GET /inventory` 背包 / 副手 / 盔甲 / 熔炉 / 箱子，`GET /world` 维度 / 时间 / 天气，`GET /msg` 聊天栏回显，`GET /sound` 播放过的声音 ID（`GET /keysnd` 只看重要声音） |
 | [**cmdCraft**](https://github.com/MineAgent/cmdCraft) | 可选 | 聊天指令 | **手**：`/craft` 合成、`/inventory` 换快捷栏、`/furnace` 冶炼、`/chest` 存取箱子 |
 | [**Baritone**](https://github.com/cabaletta/baritone) | 可选 | `bt` 命令 | **腿**：寻路与自动挖矿 |
 | [**playbook.md**](playbook.md) | — | — | 给模型看的操作手册：接口、实测结论、坐标、流程、坑 |
@@ -28,8 +28,9 @@ HTTP 接口和聊天指令，LLM 只要会发请求，就能从空手一路玩�
         ┌────────────────────────────────┐
         │  GET :3421/info                │  我在哪、面朝哪、还剩多少血
         │  GET :3421/inventory           │  背包 / 副手 / 盔甲 / 熔炉 / 箱子
+        │  GET :3421/world               │  维度 / 时间 / 天气
         │  GET :3421/msg                 │  聊天栏回显：指令输出 / Baritone / 报错
-        │  GET :3421/sound               │  播放过的声音：破坏 / 脚步 / 怪物 / 爆炸
+        │  GET :3421/sound  /keysnd      │  播放过的声音 ID（/keysnd 只看重要的）
         └───────────────┬────────────────┘
                         │ ① 观察
                         ▼
@@ -44,7 +45,7 @@ HTTP 接口和聊天指令，LLM 只要会发请求，就能从空手一路玩�
         └───────────────┬────────────────┘
                         │ ④ 校验
                         ▼
-              GET :3421/msg 读回显 + /sound 听动静 + GET :3420/prtsc 看一眼画面，回到 ①
+              GET :3421/msg 读回显 + /keysnd 听动静 + GET :3420/prtsc 看一眼画面，回到 ①
 ```
 
 实际的请求：
@@ -52,8 +53,9 @@ HTTP 接口和聊天指令，LLM 只要会发请求，就能从空手一路玩�
 ```bash
 curl -s http://127.0.0.1:3421/info                                        # 坐标/朝向/生命
 curl -s http://127.0.0.1:3421/inventory                                   # 背包/副手/盔甲/熔炉/箱子
+curl -s http://127.0.0.1:3421/world                                       # 维度/时间/天气
 curl -s http://127.0.0.1:3421/msg                                         # 上次读之后的聊天回显
-curl -s http://127.0.0.1:3421/sound                                       # 上次读之后播放的声音
+curl -s http://127.0.0.1:3421/keysnd                                      # 上次读之后的重要声音
 curl -s -X POST --data-binary 'bt mine iron_ore'          http://127.0.0.1:3420
 curl -s -X POST --data-binary 'chat /craft iron_pickaxe'  http://127.0.0.1:3420
 curl -s -X POST --data-binary 'chat /inventory torch 2'   http://127.0.0.1:3420
@@ -66,8 +68,8 @@ curl -s -o shot.png http://127.0.0.1:3420/prtsc
   视角旋转会正常同步给服务器，不抢占真实键鼠。只装它一个，LLM 就已经能玩了——只是玩得很笨。
 * **AdvancedInfoFetcher = 眼睛 + 耳朵（可选）**：LLM 不需要看懂画面，坐标、朝向、血量、背包、熔炉燃烧进度全部是纯文本；
   `GET /msg` 还把聊天栏回显也变成纯文本——指令报错、Baritone 的输出不用再靠截图去认；
-  `GET /sound` 更进一步，把播放过的声音 ID（破坏方块、脚步、怪物、爆炸）也变成文本，
-  "刚才发生了什么"不用截图就能判断。
+  `GET /sound` / `GET /keysnd` 更进一步，把播放过的声音 ID（破坏方块、怪物、爆炸；`/keysnd` 已滤掉脚步/音乐/环境音/UI/天气）也变成文本，
+  "刚才发生了什么"不用截图就能判断；`GET /world` 则给出维度、时间和天气。
 * **cmdCraft = 手（可选）**：GUI 对 LLM 很不友好——光标起始位置读不到、点击有延迟、容易点错格子。
   所以把合成、冶炼、开箱子这些高频动作变成指令，直接发 `ServerboundContainerClickPacket`，
   和玩家亲手点格子完全等价，服务端照常校验。
@@ -92,9 +94,9 @@ curl http://127.0.0.1:3421/info    # 玩家状态（装了 AdvancedInfoFetcher �
 [`playbook.md`](playbook.md) 是真正交给模型的那份文档，只写「正式游玩时该怎么做」：
 
 * 两个端口（3420 控制 / 3421 信息）的接口与字段（`GET :3420/`、`GET :3421/` 全文的精简版）
-* **状态与回显**：`/info`、`/inventory` 的字段含义，`/msg` 的增量聊天回显
-  （指令输出 / Baritone / 报错，读取即清空），以及 `/sound` 的增量声音回显
-  （`<声音ID> <音量> <音高>`，每播放一次一行）
+* **状态与回显**：`/info`、`/inventory`、`/world` 的字段含义，`/msg` 的增量聊天回显
+  （指令输出 / Baritone / 报错，读取即清空），以及 `/sound`·`/keysnd` 的增量声音回显
+  （`<声音ID> <音量> <音高>`，每播放一次一行；`/keysnd` 与 `/sound` 共用队列，只给重要声音）
 * **输入通道实测结论**：`E` 开背包、`1`-`9` 切格、`Q` 丢弃都通过 HTTP 有效；
   发文本一律走 `chat <文本>` / `bt <命令>`，不通过聊天框打字；
   聊天框开着时 `E`/`Q`/`1`-`9` 会自动先关掉它，`W` 等移动键不受影响（详见手册 §4）
@@ -111,8 +113,10 @@ curl http://127.0.0.1:3421/info    # 玩家状态（装了 AdvancedInfoFetcher �
 | --- | --- |
 | 控制接口 | 移动 / 转向 / 视角 / 组合键，截图对比确认生效 |
 | 状态接口 | `/info` 的坐标、朝向、选中格与游戏内一致 |
+| 世界接口 | `/world` 的维度、时间、天数、游戏刻和天气跟随游戏（`/time set` 后 `时间` 立即变化） |
 | 聊天回显 | `/msg` 增量返回玩家聊天、指令输出、Baritone 输出与报错，逐条与客户端日志的 `[CHAT]` 一致，读完再次请求为空 |
 | 声音回显 | `/sound` 增量返回播出音效的命名空间 ID、请求音量与音高；挖石头得到 `minecraft:block.stone.break`，未知/被静音跳过的音效不出现 |
+| 重要声音 | `/keysnd` 过滤掉脚步/音乐/ambient/ui/天气，只留破坏方块、怪物、爆炸等；与 `/sound` 共用一个队列 |
 | Baritone | `bt mine oak_log`、`bt mine stone`、`bt mine iron_ore` 自动寻路挖掘并拾取（实测把玩家从 y=48 带到 y=18） |
 | 合成 | 原木 → 木板 → 工作台 → 木镐 → 石镐 |
 | 冶炼 | `/furnace put raw raw_iron`、`put fuel`、`get product` 取出铁锭 |
