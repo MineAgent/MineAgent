@@ -109,7 +109,11 @@ curl http://127.0.0.1:3421/info    # 玩家状态（装了 AdvancedInfoFetcher �
 
 ## 已验证
 
-在真实客户端（Minecraft 26.2 + Fabric + Baritone）里跑通过：
+在真实客户端（Minecraft 26.2 + Fabric + Baritone）里跑通过，**平台为 Linux + X11/Xwayland**：
+
+> 光标相关的行为（`GET :3420/mouse` 的「不在窗口内」判断、`mouse goto` 的绝对定位）**只在 Linux 上实测过**；
+> Windows、macOS、Wayland 原生都没有实机验证——接口本身是 GLFW 的跨平台接口，代码里没有平台分支，
+> 但换平台后建议先自测一遍 `/mouse` → `mouse goto` → `mouse left`。
 
 | 能力 | 结果 |
 | --- | --- |
