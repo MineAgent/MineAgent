@@ -13,7 +13,8 @@
 2. **一次只做一个动作**，做完立刻读 `/info` + `/inventory` 对账。
 3. **死亡后第一件事是 `bt stop` + `release`**，然后立刻读 `/info` 记下死亡坐标。
 4. **掉落物 5 分钟内可以回收**：记下坐标 → 重生 → `bt goto <死亡坐标>`。不要凭「大概来不及」就放弃。
-5. **GUI 只用键盘**（`TAB` / `ENTER` / `ESC`），不要盲点鼠标。
+5. **GUI 优先键盘/指令**：按钮用 `TAB` / `ENTER` / `ESC`，格子用 cmdCraft 的 `/craft` `/furnace` `/chest` `/inventory`；
+   手点鼠标只是**没有 cmdCraft 时的兜底**（要手点就先读 `GET :3420/mouse`，再用 `mouse goto <x> <y>` 绝对定位）。
 6. **材料不凭记忆**，动手前先读 `/inventory`。
 7. **`bt mine` 没有数量参数**，定期对账，够了立刻 `bt stop`。
 8. **钻石矿必须铁镐及以上**；下矿前备好两把铁镐。
@@ -39,7 +40,7 @@ curl -s http://127.0.0.1:3420/mods                                 # 看装了�
 | --- | --- |
 | **mcctl**（必需） | 什么都做不了 |
 | AdvancedInfoFetcher | 只能靠截图判断背包、血量、聊天回显和声音 |
-| cmdCraft | 合成/冶炼只能去点 GUI 格子（很容易点错） |
+| cmdCraft | 合成/冶炼只能去点 GUI 格子（有 `GET :3420/mouse` + `mouse goto` 兜底，但仍容易点错） |
 | Baritone | 只能一步步按键走路、手动挖矿 |
 
 `bt` 命令依赖 Baritone；没装时它只会往聊天栏发 `#...`，不会执行。
@@ -63,6 +64,7 @@ curl -s http://127.0.0.1:3420/mods                                 # 看装了�
 GET  :3420/          使用说明
 GET  :3420/prtsc     当前帧 PNG（别名 /screenshot、/prtsc.png；HEAD 也可）
 GET  :3420/mods      已加载模组列表（别名 /modlist、/mods.txt）
+GET  :3420/mouse     当前光标位置：窗口像素 + GUI 缩放坐标、抓取状态、界面类名（别名 /cursor、/mouse.txt）
 POST :3420/          执行命令（text/plain, UTF-8）
 ```
 
@@ -72,6 +74,7 @@ POST :3420/          执行命令（text/plain, UTF-8）
 | `A+B+C [时长ms]` | 同时按住多个键，例如 `W+Ctrl 100` |
 | `mouse left\|right\|mid [ms]` | 鼠标键（默认 50ms） |
 | `mouse move <dx> <dy>` | 视角/光标相对移动（像素；+右 +下，-左 -上） |
+| `mouse goto <x> <y>` | 把光标移到窗口像素坐标（`GET :3420/mouse` / 截图那套坐标系；界面开着时才有意义） |
 | `mouse scroll <数值>` | 滚轮（正数向上） |
 | `delay <ms> <命令>` | 收到后先等 `ms` 毫秒再执行 |
 | `release` | 立刻松开所有按键/鼠标 |
@@ -87,6 +90,8 @@ POST :3420/          执行命令（text/plain, UTF-8）
 * 一个 POST 可以写多行（或用 `;` 分隔），**严格按顺序执行**；`//` 开头是注释。
 * 时长上限 600000ms，`delay` 上限相同。
 * `bt`/`#` 优先直接调用 Baritone API（不发聊天包）；没装 Baritone 时退化成普通聊天消息 `#<命令>`。
+* `mouse goto <x> <y>` 是**绝对定位**（窗口像素），只在界面开着时生效；一次请求里只放一个光标移动，
+  手点的兜底用法见 §5 与 §13。
 * 返回：`200 {"ok":true,"queued":N,"inWorld":true,"actions":[...]}`、`400` 语法错误、
   `409` 客户端没启动、`413` 请求体 >64KB、`500` 内部错误。
 
@@ -317,17 +322,20 @@ minecraft:entity.zombie.ambient 1.00 1.00
 
 ## 5. GUI 操作纪律
 
-**结论：界面里的按钮一律用键盘，不要盲点鼠标。**
+**结论：按钮一律用键盘（`TAB` / `ENTER` / `ESC`），格子操作用 cmdCraft 的指令；手点鼠标只是没有 cmdCraft 时的兜底，不推荐。**
 
 | 做法 | 结果 |
 | --- | --- |
-| `mouse move` + `mouse left` 点按钮 | ❌ 不可靠 |
+| cmdCraft 的 `/craft` `/furnace` `/chest` `/inventory` | ✅ 首选（装了 cmdCraft 时） |
 | `TAB` 然后 `ENTER` | ✅ 可靠 |
 | 主菜单 / 选择世界界面直接 `ENTER` | ✅ 激活默认按钮 |
+| `GET :3420/mouse` + `mouse goto` + `mouse left` | ⚠️ **兜底手段**：可用，但仍不如指令可靠，只在没有 cmdCraft 时用 |
+| `mouse move` + `mouse left` 点按钮 | ❌ 不可靠：相对位移会累积误差，起点也未必是中心 |
 
-* `/prtsc` 截的是**游戏帧，不含系统光标**，截图里看不到鼠标在哪。
-* `mouse move` 是**相对位移**，起始位置读不到，误差会累积；是否在屏幕边缘被限制也不确定。
-  在主菜单盲点甚至会误触「退出游戏」。
+* `GET :3420/mouse` 读光标位置：`光标` 是窗口像素坐标（和 `/prtsc` 截图、§13 坐标表同一坐标系），
+  `抓取：是` 表示鼠标被游戏锁住（在世界里，位置没有意义），`界面` 是当前界面类名。
+* 界面刚打开时光标在窗口中心（854×480 下是 `427 240`），之后可能已经被移动过，所以要现读现用。
+* `/prtsc` 截的是**游戏帧，不含系统光标**，截图里看不到鼠标在哪——想知道位置就读 `/mouse`。
 * 死亡画面的「重生」：`TAB` + `ENTER`。
 * 「选择世界」界面：世界条目**要先选中**，「进入选中的世界」才会亮起。
 
@@ -527,7 +535,7 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 
 * 移动/挖掘/放置用 `bt` 或按键；合成/冶炼/存取用 `chat /craft`·`/furnace`·`/chest`·`/inventory`。
 * 玩家自己的背包用 **`E 50`** 打开（关也用 `E`）；工作台/熔炉/箱子这类**方块界面**：**走过去右键**（准星判定），
-  不要试图用光标点 GUI。
+  不要试图用光标点 GUI；确实没有 cmdCraft、必须手点时见 §13（先读 `/mouse`，再用 `mouse goto`）。
 
 ### ④ 校验
 
@@ -549,10 +557,11 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 
 ## 13. 坐标兜底表（854×480）
 
-> 正常流程不需要手点 GUI —— 有了 `E` 开背包 + `/craft`，手点基本用不上了；
-> 这些坐标只在万不得已要手动点格子时用。
-> 注意：光标起始位置读不到，`mouse move` 只是相对位移，**手点不可靠**；点之前先 `/prtsc` 确认真实位置。
-> **界面按钮优先用 `TAB`/`ENTER`，不要手点。**
+> **手点 GUI 不推荐**：正常流程用 `E` 开背包 + cmdCraft 的 `/craft` / `/furnace` / `/chest` / `/inventory`，
+> 按钮用 `TAB`/`ENTER`。这张表只在**没有 cmdCraft**、又必须点格子时兜底。
+> 兜底做法：先 `GET :3420/mouse` 读 `光标`（窗口像素，和本表同一坐标系），再
+> `POST :3420 'mouse goto <x> <y>'` + `mouse left`（可以放同一个请求）；
+> `mouse move` 的相对位移会累积误差，不要用它点格子。
 
 **HUD**：准星 `(427,240)`；快捷栏第 i 格 `x = 266 + 40×(i-1)`，`y = 458`
 

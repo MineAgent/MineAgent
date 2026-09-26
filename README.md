@@ -11,14 +11,15 @@ HTTP 接口和聊天指令，LLM 只要会发请求，就能从空手一路玩�
 
 | 仓库 | 必需性 | 接口 | 作用 |
 | --- | --- | --- | --- |
-| [**mcctl**](https://github.com/MineAgent/mcctl) | **必需** | `127.0.0.1:3420` | **身体**：按键 / 鼠标 / 视角 / 滚轮 / Baritone / 聊天，另有 `GET /prtsc` 截图、`GET /mods` 模组列表 |
+| [**mcctl**](https://github.com/MineAgent/mcctl) | **必需** | `127.0.0.1:3420` | **身体**：按键 / 鼠标 / 视角 / 滚轮 / Baritone / 聊天，另有 `GET /prtsc` 截图、`GET /mods` 模组列表、`GET /mouse` 光标位置（配合 `mouse goto` 绝对定位） |
 | [**AdvancedInfoFetcher**](https://github.com/MineAgent/AdvancedInfoFetcher) | 可选 | `127.0.0.1:3421` | **眼睛+耳朵**：`GET /info` 坐标 / 朝向 / 生命 / 饱食 / 状态效果，`GET /inventory` 背包 / 副手 / 盔甲 / 熔炉 / 箱子，`GET /world` 维度 / 时间 / 天气，`GET /msg` 聊天栏回显，`GET /sound` 播放过的声音 ID（`GET /keysnd` 只看重要声音） |
 | [**cmdCraft**](https://github.com/MineAgent/cmdCraft) | 可选 | 聊天指令 | **手**：`/craft` 合成、`/inventory` 换快捷栏、`/furnace` 冶炼、`/chest` 存取箱子 |
 | [**Baritone**](https://github.com/cabaletta/baritone) | 可选 | `bt` 命令 | **腿**：寻路与自动挖矿 |
 | [**playbook.md**](playbook.md) | — | — | 给模型看的操作手册：接口、实测结论、坐标、流程、坑 |
 
 **mcctl 是唯一的硬需求**——没有它就没有任何接口可用。其余三个都是可选增强，但实际游玩时一般都会装上：
-没有 AdvancedInfoFetcher 就只能靠截图猜背包，没有 cmdCraft 就得去点 GUI 格子，没有 Baritone 就只能一步步按键走路。
+没有 AdvancedInfoFetcher 就只能靠截图猜背包，没有 cmdCraft 就得去点 GUI 格子（可以用
+`GET :3420/mouse` + `mouse goto` 兜底，但仍然容易点错），没有 Baritone 就只能一步步按键走路。
 
 全部是**客户端**模组，服务端不需要装任何东西，可以在原版 / Fabric / Paper 服务器上用。
 
@@ -70,7 +71,8 @@ curl -s -o shot.png http://127.0.0.1:3420/prtsc
   `GET /msg` 还把聊天栏回显也变成纯文本——指令报错、Baritone 的输出不用再靠截图去认；
   `GET /sound` / `GET /keysnd` 更进一步，把播放过的声音 ID（破坏方块、怪物、爆炸；`/keysnd` 已滤掉脚步/音乐/环境音/UI/天气）也变成文本，
   "刚才发生了什么"不用截图就能判断；`GET /world` 则给出维度、时间和天气。
-* **cmdCraft = 手（可选）**：GUI 对 LLM 很不友好——光标起始位置读不到、点击有延迟、容易点错格子。
+* **cmdCraft = 手（可选）**：GUI 对 LLM 很不友好——点击有延迟、容易点错格子（mcctl 1.5.0 起虽然能读光标位置、
+  也能 `mouse goto` 绝对定位，但手点 GUI 依然只是**没有 cmdCraft 时的兜底**，不推荐）。
   所以把合成、冶炼、开箱子这些高频动作变成指令，直接发 `ServerboundContainerClickPacket`，
   和玩家亲手点格子完全等价，服务端照常校验。
 * **Baritone = 腿（可选）**：`bt mine` / `bt goto` 负责寻路和挖矿，比逐步按键高效得多。
@@ -102,7 +104,7 @@ curl http://127.0.0.1:3421/info    # 玩家状态（装了 AdvancedInfoFetcher �
   聊天框开着时 `E`/`Q`/`1`-`9` 会自动先关掉它，`W` 等移动键不受影响（详见手册 §4）
 * `cmdCraft` 四条指令的前置条件、参数与常用物品 id
 * 「观察 → 决策 → 执行 → 校验」的循环节奏，以及截图延迟、对账、记坐标这些注意事项
-* 固定分辨率下的坐标表（兜底用）
+* 固定分辨率下的坐标表（仅在**没有 cmdCraft**、必须手点时兜底：先 `GET :3420/mouse` 读光标，再 `mouse goto`）
 * 指定种子与那座已激活的末地传送门，以及从空手到末影龙的路线
 
 ## 已验证
@@ -112,6 +114,7 @@ curl http://127.0.0.1:3421/info    # 玩家状态（装了 AdvancedInfoFetcher �
 | 能力 | 结果 |
 | --- | --- |
 | 控制接口 | 移动 / 转向 / 视角 / 组合键，截图对比确认生效 |
+| 光标接口 | `GET :3420/mouse` 在暂停菜单给出 `光标：427.0 240.0`、`抓取：否`、`界面：PauseScreen`；`mouse goto 321 202` + `mouse left` 点中「进度」按钮 |
 | 状态接口 | `/info` 的坐标、朝向、选中格与游戏内一致 |
 | 世界接口 | `/world` 的维度、时间、天数、游戏刻和天气跟随游戏（`/time set` 后 `时间` 立即变化） |
 | 聊天回显 | `/msg` 增量返回玩家聊天、指令输出、Baritone 输出与报错，逐条与客户端日志的 `[CHAT]` 一致，读完再次请求为空 |
