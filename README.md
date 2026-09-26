@@ -111,11 +111,10 @@ curl http://127.0.0.1:3421/info    # 玩家状态（装了 AdvancedInfoFetcher �
 
 在真实客户端（Minecraft 26.2 + Fabric + Baritone）里跑通过，**平台为 Linux + X11/Xwayland**：
 
-> **Linux 上的 Minecraft 永远跑在 X11/Xwayland 下**：26.2 的 `GLX` 里写死了
-> `glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11)`，会话是 Wayland 也一样（走 Xwayland）。
-> 原生 Wayland 只存在于 `-DMC_DEBUG_ENABLED=true -DMC_DEBUG_PREFER_WAYLAND=true` 这个调试开关下，
-> 而实测这么开之后 **MC 自己会卡死在 `glfwSwapBuffers`**（打开存档时冻结、客户端线程不再响应，
-> 也不写崩溃报告）。所以实际部署只有 X11/Xwayland 一条路径，Wayland 那段留档备查。
+> **Linux 上的 Minecraft 永远跑在 X11/Xwayland 下**：26.2 在 `GLX` 里写死
+> `glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11)`，会话是 Wayland 也一样（走 Xwayland），
+> 所以实际部署只有这一条路径。Wayland 相关的完整调查（怎么强制、为什么跑不起来、GLFW 各后端的差异）
+> 见 [mcctl 的 `Wayland.md`](https://github.com/MineAgent/mcctl/blob/main/Wayland.md)。
 > 光标相关的行为（`GET :3420/mouse` 的「不在窗口内」判断、`mouse goto` 的绝对定位）**只在 Linux 上实测过**；
 > Windows、macOS 没有实机验证——接口本身是 GLFW 的跨平台接口，代码里没有平台分支，
 > 但换平台后建议先自测一遍 `/mouse` → `mouse goto` → `mouse left`。
