@@ -114,6 +114,10 @@ curl http://127.0.0.1:3421/info    # 玩家状态（装了 AdvancedInfoFetcher �
 > 光标相关的行为（`GET :3420/mouse` 的「不在窗口内」判断、`mouse goto` 的绝对定位）**只在 Linux 上实测过**；
 > Windows、macOS、Wayland 原生都没有实机验证——接口本身是 GLFW 的跨平台接口，代码里没有平台分支，
 > 但换平台后建议先自测一遍 `/mouse` → `mouse goto` → `mouse left`。
+>
+> **Wayland 原生测不了**：Minecraft 26.2 默认强制 GLFW 走 X11，用
+> `-DMC_DEBUG_ENABLED=true -DMC_DEBUG_PREFER_WAYLAND=true` 可以强制 Wayland，但实测 MC 自己会卡死在
+> `glfwSwapBuffers`（启动到打开存档时冻结，客户端线程不再响应）。所以照默认用 X11/Xwayland 即可。
 
 | 能力 | 结果 |
 | --- | --- |
