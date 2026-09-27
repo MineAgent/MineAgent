@@ -11,15 +11,16 @@ HTTP 接口和聊天指令，LLM 只要会发请求，就能从空手一路玩�
 
 | 仓库 | 必需性 | 接口 | 作用 |
 | --- | --- | --- | --- |
-| [**mcctl**](https://github.com/MineAgent/mcctl) | **必需** | `127.0.0.1:3420` | **身体**：按键 / 鼠标 / 视角 / 滚轮 / Baritone / 聊天，另有 `GET /prtsc` 截图、`GET /mods` 模组列表、`GET /mouse` 光标位置（配合 `mouse goto` 绝对定位） |
-| [**AdvancedInfoFetcher**](https://github.com/MineAgent/AdvancedInfoFetcher) | 可选 | `127.0.0.1:3421` | **眼睛+耳朵**：`GET /info` 坐标 / 朝向 / 生命 / 饱食 / 状态效果，`GET /inventory` 背包 / 副手 / 盔甲 / 熔炉 / 箱子，`GET /world` 维度 / 时间 / 天气，`GET /msg` 聊天栏回显，`GET /sound` 播放过的声音 ID（`GET /keysnd` 只看重要声音） |
+| [**MGHttpdProvider**](https://github.com/MineAgent/HttpdProvider) | **必需** | `127.0.0.1:3420` | **插座**：共享 HTTP 服务，各模组挂在它的前缀下；`GET /` 列出当前可用的 endpoint |
+| [**mcctl**](https://github.com/MineAgent/mcctl) | **必需** | `127.0.0.1:3420/ctl` | **身体**：按键 / 鼠标 / 视角 / 滚轮 / Baritone / 聊天，另有 `GET /ctl/prtsc` 截图、`GET /ctl/mouse` 光标位置（配合 `mouse goto` 绝对定位） |
+| [**AdvancedInfoFetcher**](https://github.com/MineAgent/AdvancedInfoFetcher) | 可选 | `127.0.0.1:3420/aif` | **眼睛+耳朵**：`GET /aif/info` 坐标 / 朝向 / 生命 / 饱食 / 状态效果，`GET /aif/inventory` 背包 / 副手 / 盔甲 / 熔炉 / 箱子，`GET /aif/world` 维度 / 时间 / 天气，`GET /aif/msg` 聊天栏回显，`GET /aif/sound` 播放过的声音 ID（`GET /aif/keysnd` 只看重要声音） |
 | [**cmdCraft**](https://github.com/MineAgent/cmdCraft) | 可选 | 聊天指令 | **手**：一条 `/cmdop` 下辖 `craft` 合成、`inventory` 换快捷栏、`furnace` 冶炼、`chest` 存取箱子、`look` 转视角 |
 | [**Baritone**](https://github.com/cabaletta/baritone) | 可选 | `bt` 命令 | **腿**：寻路与自动挖矿 |
 | [**playbook.md**](playbook.md) | — | — | 给模型看的操作手册：接口、实测结论、坐标、流程、坑 |
 
-**mcctl 是唯一的硬需求**——没有它就没有任何接口可用。其余三个都是可选增强，但实际游玩时一般都会装上：
+**MGHttpdProvider + mcctl 是硬需求**——前者提供 3420 端口，后者是身体；没有它们就没有任何接口可用。其余三个都是可选增强，但实际游玩时一般都会装上：
 没有 AdvancedInfoFetcher 就只能靠截图猜背包，没有 cmdCraft 就得去点 GUI 格子（可以用
-`GET :3420/mouse` + `mouse goto` 兜底，但仍然容易点错），没有 Baritone 就只能一步步按键走路。
+`GET :3420/ctl/mouse` + `mouse goto` 兜底，但仍然容易点错），没有 Baritone 就只能一步步按键走路。
 
 全部是**客户端**模组，服务端不需要装任何东西，可以在原版 / Fabric / Paper 服务器上用。
 
@@ -27,11 +28,11 @@ HTTP 接口和聊天指令，LLM 只要会发请求，就能从空手一路玩�
 
 ```
         ┌────────────────────────────────┐
-        │  GET :3421/info                │  我在哪、面朝哪、还剩多少血
-        │  GET :3421/inventory           │  背包 / 副手 / 盔甲 / 熔炉 / 箱子
-        │  GET :3421/world               │  维度 / 时间 / 天气
-        │  GET :3421/msg                 │  聊天栏回显：指令输出 / Baritone / 报错
-        │  GET :3421/sound  /keysnd      │  播放过的声音 ID（/keysnd 只看重要的）
+        │  GET :3420/aif/info                │  我在哪、面朝哪、还剩多少血
+        │  GET :3420/aif/inventory           │  背包 / 副手 / 盔甲 / 熔炉 / 箱子
+        │  GET :3420/aif/world               │  维度 / 时间 / 天气
+        │  GET :3420/aif/msg                 │  聊天栏回显：指令输出 / Baritone / 报错
+        │  GET :3420/aif/sound  /keysnd      │  播放过的声音 ID（/keysnd 只看重要的）
         └───────────────┬────────────────┘
                         │ ① 观察
                         ▼
@@ -40,28 +41,28 @@ HTTP 接口和聊天指令，LLM 只要会发请求，就能从空手一路玩�
                   └─────┬─────┘
                         │ ③ 执行
         ┌───────────────▼────────────────┐
-        │  POST :3420  'bt mine iron_ore'     腿
-        │  POST :3420  'chat /cmdop craft ...'  手
-        │  POST :3420  'W 500' / 'mouse left' 身体
+        │  POST :3420/ctl  'bt mine iron_ore'     腿
+        │  POST :3420/ctl  'chat /cmdop craft ...'  手
+        │  POST :3420/ctl  'W 500' / 'mouse left' 身体
         └───────────────┬────────────────┘
                         │ ④ 校验
                         ▼
-              GET :3421/msg 读回显 + /keysnd 听动静 + GET :3420/prtsc 看一眼画面，回到 ①
+              GET :3420/aif/msg 读回显 + /keysnd 听动静 + GET :3420/ctl/prtsc 看一眼画面，回到 ①
 ```
 
 实际的请求：
 
 ```bash
-curl -s http://127.0.0.1:3421/info                                        # 坐标/朝向/生命
-curl -s http://127.0.0.1:3421/inventory                                   # 背包/副手/盔甲/熔炉/箱子
-curl -s http://127.0.0.1:3421/world                                       # 维度/时间/天气
-curl -s http://127.0.0.1:3421/msg                                         # 上次读之后的聊天回显
-curl -s http://127.0.0.1:3421/keysnd                                      # 上次读之后的重要声音
-curl -s -X POST --data-binary 'bt mine iron_ore'          http://127.0.0.1:3420
-curl -s -X POST --data-binary 'chat /cmdop craft iron_pickaxe'  http://127.0.0.1:3420
-curl -s -X POST --data-binary 'chat /cmdop inventory torch 2'   http://127.0.0.1:3420
-curl -s -X POST --data-binary 'chat /cmdop look yaw 90'         http://127.0.0.1:3420
-curl -s -o shot.png http://127.0.0.1:3420/prtsc
+curl -s http://127.0.0.1:3420/aif/info                                        # 坐标/朝向/生命
+curl -s http://127.0.0.1:3420/aif/inventory                                   # 背包/副手/盔甲/熔炉/箱子
+curl -s http://127.0.0.1:3420/aif/world                                       # 维度/时间/天气
+curl -s http://127.0.0.1:3420/aif/msg                                         # 上次读之后的聊天回显
+curl -s http://127.0.0.1:3420/aif/keysnd                                      # 上次读之后的重要声音
+curl -s -X POST --data-binary 'bt mine iron_ore'          http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'chat /cmdop craft iron_pickaxe'  http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'chat /cmdop inventory torch 2'   http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'chat /cmdop look yaw 90'         http://127.0.0.1:3420/ctl
+curl -s -o shot.png http://127.0.0.1:3420/ctl/prtsc
 ```
 
 ## 各自解决什么问题
@@ -83,21 +84,21 @@ curl -s -o shot.png http://127.0.0.1:3420/prtsc
 
 ```bash
 # 1. 需要 Minecraft 26.2 + Fabric Loader 0.19.5+
-# 2. 必需的：mcctl
-cp mcctl-*.jar ~/.minecraft/mods/
+# 2. 必需的：MGHttpdProvider（3420 端口）+ mcctl
+cp httpdprovider-*.jar mcctl-*.jar ~/.minecraft/mods/
 # 3. 强烈建议一起装的三个（可选，但少了会难受）
 cp advanced-info-fetch-*.jar craftcmd-*.jar ~/.minecraft/mods/   # Baritone 另见其仓库
 # 4. 启动游戏、进入存档，然后：
-curl http://127.0.0.1:3420/        # mcctl 使用说明
-curl http://127.0.0.1:3420/mods    # 确认模组都加载了
-curl http://127.0.0.1:3421/info    # 玩家状态（装了 AdvancedInfoFetcher 才有）
+curl http://127.0.0.1:3420/            # 当前可用的 endpoint 列表
+curl http://127.0.0.1:3420/ctl/        # mcctl 使用说明
+curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetcher 才有）
 ```
 
 ## 手册
 
 [`playbook.md`](playbook.md) 是真正交给模型的那份文档，只写「正式游玩时该怎么做」：
 
-* 两个端口（3420 控制 / 3421 信息）的接口与字段（`GET :3420/`、`GET :3421/` 全文的精简版）
+* 一个端口（3420：`/ctl` 控制 / `/aif` 信息）的接口与字段（`GET :3420/`、`GET :3420/ctl/`、`GET :3420/aif/` 全文的精简版）
 * **状态与回显**：`/info`、`/inventory`、`/world` 的字段含义，`/msg` 的增量聊天回显
   （指令输出 / Baritone / 报错，读取即清空），以及 `/sound`·`/keysnd` 的增量声音回显
   （`<声音ID> <音量> <音高>`，每播放一次一行；`/keysnd` 与 `/sound` 共用队列，只给重要声音）
@@ -106,7 +107,7 @@ curl http://127.0.0.1:3421/info    # 玩家状态（装了 AdvancedInfoFetcher �
   聊天框开着时 `E`/`Q`/`1`-`9` 会自动先关掉它，`W` 等移动键不受影响（详见手册 §4）
 * `cmdCraft` 五条 `/cmdop` 子指令（`craft` / `inventory` / `furnace` / `chest` / `look`）的前置条件、参数与常用物品 id
 * 「观察 → 决策 → 执行 → 校验」的循环节奏，以及截图延迟、对账、记坐标这些注意事项
-* 固定分辨率下的坐标表（仅在**没有 cmdCraft**、必须手点时兜底：先 `GET :3420/mouse` 读光标，再 `mouse goto`）
+* 固定分辨率下的坐标表（仅在**没有 cmdCraft**、必须手点时兜底：先 `GET :3420/ctl/mouse` 读光标，再 `mouse goto`）
 * 指定种子与那座已激活的末地传送门，以及从空手到末影龙的路线
 
 ## 已验证
@@ -117,7 +118,7 @@ curl http://127.0.0.1:3421/info    # 玩家状态（装了 AdvancedInfoFetcher �
 > `glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11)`，会话是 Wayland 也一样（走 Xwayland），
 > 所以实际部署只有这一条路径。Wayland 相关的完整调查（怎么强制、为什么跑不起来、GLFW 各后端的差异）
 > 见 [mcctl 的 `Wayland.md`](https://github.com/MineAgent/mcctl/blob/main/Wayland.md)。
-> 光标相关的行为（`GET :3420/mouse` 的「不在窗口内」判断、`mouse goto` 的绝对定位）**只在 Linux 上实测过**；
+> 光标相关的行为（`GET :3420/ctl/mouse` 的「不在窗口内」判断、`mouse goto` 的绝对定位）**只在 Linux 上实测过**；
 > Windows、macOS 没有实机验证——接口本身是 GLFW 的跨平台接口，代码里没有平台分支，
 > 但换平台后建议先自测一遍 `/mouse` → `mouse goto` → `mouse left`。
 
@@ -125,7 +126,7 @@ curl http://127.0.0.1:3421/info    # 玩家状态（装了 AdvancedInfoFetcher �
 | --- | --- |
 | 控制接口 | 移动 / 转向 / 视角 / 组合键，截图对比确认生效 |
 | 视角指令 | `/cmdop look yaw 90`、`pitch ~-5` 之后 `/info` 的 `yaw` / `pitch` 与之一致；多人服务端 `data get entity … Rotation` 也是同一组值 |
-| 光标接口 | `GET :3420/mouse` 在暂停菜单给出 `光标：427.0 240.0`、`抓取：否`、`界面：PauseScreen`；`mouse goto 321 202` + `mouse left` 点中「进度」按钮 |
+| 光标接口 | `GET :3420/ctl/mouse` 在暂停菜单给出 `光标：427.0 240.0`、`抓取：否`、`界面：PauseScreen`；`mouse goto 321 202` + `mouse left` 点中「进度」按钮 |
 | 光标在窗口外 | 把指针移到窗口外后 `/mouse` 输出 `光标：不在窗口内，请使用 mouse goto <x> <y>`（用跨平台的 `GLFW_HOVERED` 判断）；照常 `mouse goto` + `mouse left` 仍能点中，且物理指针被拉回窗口内 |
 | 状态接口 | `/info` 的坐标、朝向、选中格与游戏内一致 |
 | 世界接口 | `/world` 的维度、时间、天数、游戏刻和天气跟随游戏（`/time set` 后 `时间` 立即变化） |

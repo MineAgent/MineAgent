@@ -15,40 +15,41 @@
 4. **掉落物 5 分钟内可以回收**：记下坐标 → 重生 → `bt goto <死亡坐标>`。不要凭「大概来不及」就放弃。
 5. **GUI 优先键盘/指令**：按钮用 `TAB` / `ENTER` / `ESC`，格子用 cmdCraft 的 `/cmdop craft` `/cmdop furnace` `/cmdop chest` `/cmdop inventory`，
    准星朝向用 `/cmdop look`；
-   手点鼠标只是**没有 cmdCraft 时的兜底**（要手点就先读 `GET :3420/mouse`，再用 `mouse goto <x> <y>` 绝对定位）。
+   手点鼠标只是**没有 cmdCraft 时的兜底**（要手点就先读 `GET :3420/ctl/mouse`，再用 `mouse goto <x> <y>` 绝对定位）。
 6. **材料不凭记忆**，动手前先读 `/inventory`。
 7. **`bt mine` 没有数量参数**，定期对账，够了立刻 `bt stop`。
 8. **钻石矿必须铁镐及以上**；下矿前备好两把铁镐。
 9. **长时间任务定期读 `/info`**；掉血、有怪、天黑就撤。
 10. **记坐标**：基地、工作台、熔炉、矿洞口、传送门，读到就记下来。
-11. **操作回显读 `GET :3421/msg`**：指令输出、Baritone、报错都在里面，不要靠截图猜有没有成功。
-12. **动静读 `GET :3421/keysnd`**（重要声音：破坏方块、怪物、爆炸）；要完整声音列表才用 `/sound`，两者共用一个队列。
-13. **天黑没黑、什么天气、在哪个维度，读 `GET :3421/world`**；`时间` 接近 12000 就该准备过夜。
+11. **操作回显读 `GET :3420/aif/msg`**：指令输出、Baritone、报错都在里面，不要靠截图猜有没有成功。
+12. **动静读 `GET :3420/aif/keysnd`**（重要声音：破坏方块、怪物、爆炸）；要完整声音列表才用 `/sound`，两者共用一个队列。
+13. **天黑没黑、什么天气、在哪个维度，读 `GET :3420/aif/world`**；`时间` 接近 12000 就该准备过夜。
 
 ---
 
 ## 1. 开工自检
 
 ```sh
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3420/    # 200 = mcctl 在（必需）
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3421/    # 200 = AdvancedInfoFetcher 在
-curl -s http://127.0.0.1:3420/mods                                 # 看装了哪些模组
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3420/ctl/    # 200 = mcctl 在（必需）
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3420/aif/    # 200 = AdvancedInfoFetcher 在
+curl -s http://127.0.0.1:3420/                                        # 当前可用的 endpoint 列表
 ```
 
 装了哪些模组，决定了能用哪些手段：
 
 | 模组 | 没有它时的后果 |
 | --- | --- |
+| **MGHttpdProvider**（必需） | 端口 3420 上什么都没有，mcctl 和 AdvancedInfoFetcher 都挂不上 |
 | **mcctl**（必需） | 什么都做不了 |
 | AdvancedInfoFetcher | 只能靠截图判断背包、血量、聊天回显和声音 |
-| cmdCraft | 合成/冶炼只能去点 GUI 格子（有 `GET :3420/mouse` + `mouse goto` 兜底，但仍容易点错） |
+| cmdCraft | 合成/冶炼只能去点 GUI 格子（有 `GET :3420/ctl/mouse` + `mouse goto` 兜底，但仍容易点错） |
 | Baritone | 只能一步步按键走路、手动挖矿 |
 
 `bt` 命令依赖 Baritone；没装时它只会往聊天栏发 `#...`，不会执行。
 
-**接口原文**：`GET :3420/` 和 `GET :3421/` 各自返回所在模组的完整使用说明，是接口的权威定义。
+**接口原文**：`GET :3420/ctl/` 和 `GET :3420/aif/` 各自返回所在模组的完整使用说明，是接口的权威定义。
 下面 §2–§4 是它们的精简版，只写**当前最新版本**的行为。
-**版本不匹配时，自行 `GET :3420/` 和 `GET :3421/` 获取帮助**，以实时全文为准。
+**版本不匹配时，自行 `GET :3420/ctl/` 和 `GET :3420/aif/` 获取帮助**，以实时全文为准。
 
 ---
 
@@ -56,17 +57,17 @@ curl -s http://127.0.0.1:3420/mods                                 # 看装了�
 
 | 端口 | 模组 | 用途 |
 | --- | --- | --- |
-| **3420** | mcctl | 控制（POST）+ 截图 + 模组列表 |
-| **3421** | AdvancedInfoFetcher | 只读状态（GET/HEAD） |
+| **3420** | MGHttpdProvider | 共享 HTTP 服务（必需）：`GET /` 列出当前可用的 endpoint |
+| **3420/ctl** | mcctl | 控制（POST）+ 截图 + 光标位置 |
+| **3420/aif** | AdvancedInfoFetcher | 只读状态（GET/HEAD） |
 
-### 3420 — 控制
+### :3420/ctl — 控制
 
 ```
-GET  :3420/          使用说明
-GET  :3420/prtsc     当前帧 PNG（别名 /screenshot、/prtsc.png；HEAD 也可）
-GET  :3420/mods      已加载模组列表（别名 /modlist、/mods.txt）
-GET  :3420/mouse     当前光标位置：窗口像素 + GUI 缩放坐标、抓取状态、界面类名（别名 /cursor、/mouse.txt）
-POST :3420/          执行命令（text/plain, UTF-8）
+GET  :3420/ctl/          使用说明
+GET  :3420/ctl/prtsc     当前帧 PNG（别名 /screenshot、/prtsc.png；HEAD 也可）
+GET  :3420/ctl/mouse     当前光标位置：窗口像素 + GUI 缩放坐标、抓取状态、界面类名（别名 /cursor、/mouse.txt）
+POST :3420/ctl/          执行命令（text/plain, UTF-8）
 ```
 
 | 命令 | 说明 |
@@ -75,7 +76,7 @@ POST :3420/          执行命令（text/plain, UTF-8）
 | `A+B+C [时长ms]` | 同时按住多个键，例如 `W+Ctrl 100` |
 | `mouse left\|right\|mid [ms]` | 鼠标键（默认 50ms） |
 | `mouse move <dx> <dy>` | 视角/光标相对移动（像素；+右 +下，-左 -上） |
-| `mouse goto <x> <y>` | 把光标移到窗口像素坐标（`GET :3420/mouse` / 截图那套坐标系；界面开着时才有意义） |
+| `mouse goto <x> <y>` | 把光标移到窗口像素坐标（`GET :3420/ctl/mouse` / 截图那套坐标系；界面开着时才有意义） |
 | `mouse scroll <数值>` | 滚轮（正数向上） |
 | `delay <ms> <命令>` | 收到后先等 `ms` 毫秒再执行 |
 | `release` | 立刻松开所有按键/鼠标 |
@@ -96,15 +97,15 @@ POST :3420/          执行命令（text/plain, UTF-8）
 * 返回：`200 {"ok":true,"queued":N,"inWorld":true,"actions":[...]}`、`400` 语法错误、
   `409` 客户端没启动、`413` 请求体 >64KB、`500` 内部错误。
 
-### 3421 — 状态
+### :3420/aif — 状态
 
 ```
-GET :3421/info        玩家状态（别名 /player、/info.txt）
-GET :3421/inventory   背包与容器（别名 /inv、/inventory.txt）
-GET :3421/msg         自上次请求以来聊天栏出现的一切（别名 /chat、/msg.txt）
-GET :3421/sound       自上次请求以来播放过的声音（别名 /sounds、/sound.txt）
-GET :3421/keysnd      自上次请求以来的重要声音（同 /sound, 过滤脚步/音乐/ambient/ui/天气; 别名 /keysounds、/keysnd.txt）
-GET :3421/world       当前维度/时间/天数/游戏刻/天气（别名 /dimension、/world.txt）
+GET :3420/aif/info        玩家状态（别名 /player、/info.txt）
+GET :3420/aif/inventory   背包与容器（别名 /inv、/inventory.txt）
+GET :3420/aif/msg         自上次请求以来聊天栏出现的一切（别名 /chat、/msg.txt）
+GET :3420/aif/sound       自上次请求以来播放过的声音（别名 /sounds、/sound.txt）
+GET :3420/aif/keysnd      自上次请求以来的重要声音（同 /sound, 过滤脚步/音乐/ambient/ui/天气; 别名 /keysounds、/keysnd.txt）
+GET :3420/aif/world       当前维度/时间/天数/游戏刻/天气（别名 /dimension、/world.txt）
 ```
 
 * 只读，只接受 `GET`/`HEAD`；`200 text/plain; charset=utf-8`，每行一条。
@@ -117,7 +118,7 @@ GET :3421/world       当前维度/时间/天数/游戏刻/天气（别名 /dime
 
 ## 3. 状态读取
 
-### `GET :3421/info`
+### `GET :3420/aif/info`
 
 ```
 玩家：DSH
@@ -148,7 +149,7 @@ minecraft:haste 2 95
 
 > 维度不在 `/info` 里了（1.6.0 起移走），要维度、时间、天气就读下面的 `/world`。
 
-### `GET :3421/world`
+### `GET :3420/aif/world`
 
 ```
 维度：minecraft:overworld
@@ -171,7 +172,7 @@ minecraft:haste 2 95
 * 在下界/末地，`时间` 输出 `不可用`；`天数`/`游戏刻` 仍是主世界的计数。
 * 天黑之前（`时间` 接近 12000）就该往安全处撤（见 §7）。
 
-### `GET :3421/inventory`
+### `GET :3420/aif/inventory`
 
 ```
 背包：
@@ -214,9 +215,9 @@ minecraft:stone 64
 > **重点**：客户端只有在界面打开时才知道容器内容。想知道熔炉烧好没有，必须**右键打开熔炉并保持界面**，
 > 然后读 `/inventory` 的 `烧炼`/`产物`。
 
-### `GET :3421/msg`
+### `GET :3420/aif/msg`
 
-聊天栏的增量：**只返回上一次 `GET :3421/msg` 之后新出现的消息**，读完即清空。
+聊天栏的增量：**只返回上一次 `GET :3420/aif/msg` 之后新出现的消息**，读完即清空。
 
 ```
 <DSH> 你好
@@ -238,9 +239,9 @@ definitely_not_a_command<--[此处]
 * 消息进了聊天栏就被记下，**不随画面淡出而消失**，可以事后慢慢读。
 * 只记聊天栏；**隐藏式字幕**（辅助功能里的声音字幕，如「方块：被放置」）和**动作栏（overlay）提示**都不在其中，这类反馈只能靠截图。
 
-### `GET :3421/sound`
+### `GET :3420/aif/sound`
 
-声音的增量：**只返回上一次 `GET :3421/sound` 之后新播放的声音**，读完即清空。
+声音的增量：**只返回上一次 `GET :3420/aif/sound` 之后新播放的声音**，读完即清空。
 
 ```
 minecraft:block.stone.break 1.00 0.80
@@ -263,7 +264,7 @@ minecraft:entity.zombie.ambient 1.00 1.00
 * 环境音和脚步很频繁，轮询间隔别太长，否则一次读到很多行；只想看重点就用 `/keysnd`。
 * 它和 `/msg` 一样是"读取即清空"，`HEAD /sound` 返回 `405`。
 
-### `GET :3421/keysnd`
+### `GET :3420/aif/keysnd`
 
 和 `/sound` **行格式完全一样**，但只给"重要"声音，把下面这几类丢掉：
 
@@ -317,7 +318,7 @@ minecraft:entity.zombie.ambient 1.00 1.00
   误按再按一次退出。
 * 右键（使用/放置/开界面）和左键（攻击/挖掘）都正常。
 * **聊天栏回显是排错的主要信息来源**（`/cmdop craft`、`/cmdop furnace`、`/cmdop chest`、Baritone 的报错都在里面），
-  发完操作读 **`GET :3421/msg`**（推荐，直接是文本），必要时再 `/prtsc` 看聊天区。
+  发完操作读 **`GET :3420/aif/msg`**（推荐，直接是文本），必要时再 `/prtsc` 看聊天区。
 
 ---
 
@@ -330,10 +331,10 @@ minecraft:entity.zombie.ambient 1.00 1.00
 | cmdCraft 的 `/cmdop craft` `/cmdop furnace` `/cmdop chest` `/cmdop inventory` `/cmdop look` | ✅ 首选（装了 cmdCraft 时） |
 | `TAB` 然后 `ENTER` | ✅ 可靠 |
 | 主菜单 / 选择世界界面直接 `ENTER` | ✅ 激活默认按钮 |
-| `GET :3420/mouse` + `mouse goto` + `mouse left` | ⚠️ **兜底手段**：可用，但仍不如指令可靠，只在没有 cmdCraft 时用 |
+| `GET :3420/ctl/mouse` + `mouse goto` + `mouse left` | ⚠️ **兜底手段**：可用，但仍不如指令可靠，只在没有 cmdCraft 时用 |
 | `mouse move` + `mouse left` 点按钮 | ❌ 不可靠：相对位移会累积误差，起点也未必是中心 |
 
-* `GET :3420/mouse` 读光标位置：`光标` 是窗口像素坐标（和 `/prtsc` 截图、§13 坐标表同一坐标系），
+* `GET :3420/ctl/mouse` 读光标位置：`光标` 是窗口像素坐标（和 `/prtsc` 截图、§13 坐标表同一坐标系），
   `抓取：是` 表示鼠标被游戏锁住（在世界里，位置没有意义），`界面` 是当前界面类名。
 * 如果 `光标` 那行直接显示 **`不在窗口内，请使用 mouse goto <x> <y>`**，说明指针已经移到窗口外：
   GLFW 只在指针位于窗口上时才更新位置，这时旧坐标不作数——不要直接 `mouse left`，先 `mouse goto` 再点。
@@ -393,7 +394,7 @@ minecraft:entity.zombie.ambient 1.00 1.00
 * 火把用完 / 周围全黑
 * 听到怪物声音、看到骷髅或苦力怕
 * 饱食度见底且没有食物
-* 天黑了而自己在地表（`GET :3421/world` 的 `时间` 过 12000）
+* 天黑了而自己在地表（`GET :3420/aif/world` 的 `时间` 过 12000）
 
 **不要在没有退路（没食物/没火把/没护甲）的情况下深挖。**
 
@@ -406,9 +407,9 @@ minecraft:entity.zombie.ambient 1.00 1.00
 ### `/cmdop craft <物品id> [数量]`
 
 ```sh
-curl -s -X POST --data-binary 'chat /cmdop craft stone_pickaxe'      http://127.0.0.1:3420
-curl -s -X POST --data-binary 'chat /cmdop craft oak_planks 8'       http://127.0.0.1:3420
-curl -s -X POST --data-binary 'chat /cmdop craft crafting_table'     http://127.0.0.1:3420
+curl -s -X POST --data-binary 'chat /cmdop craft stone_pickaxe'      http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'chat /cmdop craft oak_planks 8'       http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'chat /cmdop craft crafting_table'     http://127.0.0.1:3420/ctl
 ```
 
 * `数量` 指**产物个数**，会自动向上取整到整数次合成，并把实际结果报在聊天里。
@@ -428,13 +429,13 @@ curl -s -X POST --data-binary 'chat /cmdop craft crafting_table'     http://127.
 * 材料不够时会报 `原料不足：<物品> 需要 N 个`——**先看 `/inventory` 备齐**，别凭记忆（木棍常常是漏项）。
 * 配方必须已在客户端配方书里（原版规则：拿到材料就解锁）。
 * 任一检查不过就什么都不做，不会半途消耗材料。
-* 报错内容在**聊天栏**，用 `GET :3421/msg` 读。
+* 报错内容在**聊天栏**，用 `GET :3420/aif/msg` 读。
 
 ### `/cmdop inventory <物品id> [1-9]`
 
 ```sh
-curl -s -X POST --data-binary 'chat /cmdop inventory torch 2'    http://127.0.0.1:3420   # 火把换到第 2 格
-curl -s -X POST --data-binary 'chat /cmdop inventory iron_pickaxe 1' http://127.0.0.1:3420
+curl -s -X POST --data-binary 'chat /cmdop inventory torch 2'    http://127.0.0.1:3420/ctl   # 火把换到第 2 格
+curl -s -X POST --data-binary 'chat /cmdop inventory iron_pickaxe 1' http://127.0.0.1:3420/ctl
 ```
 
 把背包里的整叠物品换到指定快捷栏格（原版数字键交换），默认第 1 格。找的是**第一个匹配的整叠**，
@@ -446,9 +447,9 @@ curl -s -X POST --data-binary 'chat /cmdop inventory iron_pickaxe 1' http://127.
 ### `/cmdop furnace put|get <raw|fuel|product> <物品id> [数量]`
 
 ```sh
-curl -s -X POST --data-binary 'chat /cmdop furnace put raw raw_iron 8'  http://127.0.0.1:3420
-curl -s -X POST --data-binary 'chat /cmdop furnace put fuel coal 4'     http://127.0.0.1:3420
-curl -s -X POST --data-binary 'chat /cmdop furnace get product'         http://127.0.0.1:3420
+curl -s -X POST --data-binary 'chat /cmdop furnace put raw raw_iron 8'  http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'chat /cmdop furnace put fuel coal 4'     http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'chat /cmdop furnace get product'         http://127.0.0.1:3420/ctl
 ```
 
 * 槽位名就是 `raw` / `fuel` / `product`。
@@ -459,8 +460,8 @@ curl -s -X POST --data-binary 'chat /cmdop furnace get product'         http://1
 ### `/cmdop chest put|get <物品id> [数量]`
 
 ```sh
-curl -s -X POST --data-binary 'chat /cmdop chest put cobblestone 64'  http://127.0.0.1:3420
-curl -s -X POST --data-binary 'chat /cmdop chest get iron_ingot 16'   http://127.0.0.1:3420
+curl -s -X POST --data-binary 'chat /cmdop chest put cobblestone 64'  http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'chat /cmdop chest get iron_ingot 16'   http://127.0.0.1:3420/ctl
 ```
 
 * **必须开着箱子界面**（箱子 / 陷阱箱 / 大箱子 / 木桶）。
@@ -469,9 +470,9 @@ curl -s -X POST --data-binary 'chat /cmdop chest get iron_ingot 16'   http://127
 ### `/cmdop look <yaw|pitch> <数值>`
 
 ```sh
-curl -s -X POST --data-binary 'chat /cmdop look yaw 90'    http://127.0.0.1:3420   # 把 yaw 设为 90°
-curl -s -X POST --data-binary 'chat /cmdop look yaw ~-20'  http://127.0.0.1:3420   # 当前 yaw 减小 20°
-curl -s -X POST --data-binary 'chat /cmdop look pitch 30'  http://127.0.0.1:3420   # 低头 30°（放方块用）
+curl -s -X POST --data-binary 'chat /cmdop look yaw 90'    http://127.0.0.1:3420/ctl   # 把 yaw 设为 90°
+curl -s -X POST --data-binary 'chat /cmdop look yaw ~-20'  http://127.0.0.1:3420/ctl   # 当前 yaw 减小 20°
+curl -s -X POST --data-binary 'chat /cmdop look pitch 30'  http://127.0.0.1:3420/ctl   # 低头 30°（放方块用）
 ```
 
 * 数值用原版 `~` 记法：`90` = 设为 90°，`~0.1` = 当前值 +0.1，`~-20` = 当前值 −20，`~` = 保持不变。
@@ -485,10 +486,10 @@ curl -s -X POST --data-binary 'chat /cmdop look pitch 30'  http://127.0.0.1:3420
 ## 9. Baritone
 
 ```sh
-curl -s -X POST --data-binary 'bt mine oak_log'    http://127.0.0.1:3420
-curl -s -X POST --data-binary 'bt mine iron_ore'   http://127.0.0.1:3420
-curl -s -X POST --data-binary 'bt stop'            http://127.0.0.1:3420
-curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
+curl -s -X POST --data-binary 'bt mine oak_log'    http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'bt mine iron_ore'   http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'bt stop'            http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420/ctl
 ```
 
 * `bt mine <方块>`：自动寻路 + 挖掘 + 捡拾，是最省事的采矿方式。
@@ -496,8 +497,8 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
   否则工具会挖断、人会越跑越远。
 * **找木头不要用 `bt mine oak_log` 在无树区域**：它不会放弃，而是**向下挖**去找废弃矿井的支撑原木，
   又慢又危险。正确做法是先在地表用 **`bt goto <远处坐标>` 定向找森林/村庄**。
-* 挖矿会把你带到很深的 y 层，**离开前用 `:3421/info` 记住坐标**，必要时 `bt goto` 回来。
-* 任务跑着的时候可以随时 `:3421/info` 看进度；`bt stop` 之后必须对账。
+* 挖矿会把你带到很深的 y 层，**离开前用 `:3420/aif/info` 记住坐标**，必要时 `bt goto` 回来。
+* 任务跑着的时候可以随时 `:3420/aif/info` 看进度；`bt stop` 之后必须对账。
 * **Baritone 的任务跨死亡存活**：死亡/中断后第一件事就是 `bt stop` + `release`。
 * 本版本 Baritone **没有 `craft` 命令**。
 * 长距离 `bt goto` 会消耗大量饱食度（§7），出发前备食物。
@@ -528,10 +529,10 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 ## 12. 决策循环
 
 ```
-① 观察  GET :3421/info + /inventory + /world
+① 观察  GET :3420/aif/info + /inventory + /world
 ② 决策  结合目标，选**一个**动作
-③ 执行  POST :3420（bt / chat / 按键 / 鼠标）
-④ 校验  GET :3421/msg 看回显 + /keysnd 听动静 + 再读一次状态对账，必要时 GET :3420/prtsc
+③ 执行  POST :3420/ctl（bt / chat / 按键 / 鼠标）
+④ 校验  GET :3420/aif/msg 看回显 + /keysnd 听动静 + 再读一次状态对账，必要时 GET :3420/ctl/prtsc
    ↺ 回到 ①
 ```
 
@@ -577,8 +578,8 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 
 > **手点 GUI 不推荐**：正常流程用 `E` 开背包 + cmdCraft 的 `/cmdop craft` / `/cmdop furnace` / `/cmdop chest` / `/cmdop inventory`，
 > 按钮用 `TAB`/`ENTER`。这张表只在**没有 cmdCraft**、又必须点格子时兜底。
-> 兜底做法：先 `GET :3420/mouse` 读 `光标`（窗口像素，和本表同一坐标系），再
-> `POST :3420 'mouse goto <x> <y>'` + `mouse left`（可以放同一个请求）；
+> 兜底做法：先 `GET :3420/ctl/mouse` 读 `光标`（窗口像素，和本表同一坐标系），再
+> `POST :3420/ctl 'mouse goto <x> <y>'` + `mouse left`（可以放同一个请求）；
 > 若 `/mouse` 报 **`不在窗口内`**，直接照做即可——`mouse goto` 会把指针一起拉回窗口；
 > `mouse move` 的相对位移会累积误差，不要用它点格子。
 
@@ -653,17 +654,17 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 | 主菜单/选择世界点不动 | 用 `ENTER`；世界条目要先选中 |
 | `/prtsc` 里看不到鼠标 | 正常，截图不含系统光标 → 改键盘操作 |
 | `/info` 返回 `no world loaded` | 客户端在主菜单/没进世界 |
-| 想知道指令/合成/冶炼/Baritone 报了什么 | 读 `GET :3421/msg`，聊天栏回显直接是文本，不必截图 |
+| 想知道指令/合成/冶炼/Baritone 报了什么 | 读 `GET :3420/aif/msg`，聊天栏回显直接是文本，不必截图 |
 | 读了 `/msg` 却是空的 | 正常：上次读完之后没有新消息（`/msg` 读取即清空） |
 | `/msg` 里没有「方块：被放置」 | 那是**隐藏式字幕**（辅助功能里的声音字幕），不在聊天栏；`/msg` 只记聊天栏，这类反馈要截图 |
-| `HEAD :3421/msg` 返回 405 | 正常：`/msg` 读取即清空，`HEAD` 会白白吃掉回显，所以只允许 `GET` |
-| 想知道刚才挖到/听到什么 | 读 `GET :3421/keysnd`（重要声音），能看到 `minecraft:block.stone.break` 这类音效 ID |
+| `HEAD :3420/aif/msg` 返回 405 | 正常：`/msg` 读取即清空，`HEAD` 会白白吃掉回显，所以只允许 `GET` |
+| 想知道刚才挖到/听到什么 | 读 `GET :3420/aif/keysnd`（重要声音），能看到 `minecraft:block.stone.break` 这类音效 ID |
 | `/sound` 里一堆脚步/环境音 | 正常：它们本来就很频繁；用 `/keysnd` 就自动过滤掉了，或只 grep 关心的 ID |
 | 拿 `/sound` 的音量判断远近 | 不行：那是请求音量，不随距离衰减，也不含分类音量设置的影响 |
 | 读了 `/sound` 却是空的 | 正常：上次读完之后没有新声音（`/sound` 读取即清空） |
-| `HEAD :3421/sound` 返回 405 | 同 `/msg`：读取即清空，`HEAD` 会白白吃掉内容，只允许 `GET` |
+| `HEAD :3420/aif/sound` 返回 405 | 同 `/msg`：读取即清空，`HEAD` 会白白吃掉内容，只允许 `GET` |
 | `/keysnd` 读不到东西 | 要么真没有重要声音，要么刚被 `/sound` 读过——两者共用一个队列 |
-| 想知道天黑没黑 / 什么天气 / 在哪个维度 | 读 `GET :3421/world`（`时间` 0–23999，`12000` 起是黄昏） |
+| 想知道天黑没黑 / 什么天气 / 在哪个维度 | 读 `GET :3420/aif/world`（`时间` 0–23999，`12000` 起是黄昏） |
 | `/weather` 之后 `/world` 还是 clear | 正常：天气是客户端渲染状态，约 5 秒过渡完才翻转 |
 | 聊天框开着，想开背包/丢东西/切格 | 直接发 `E`/`Q`/`1`~`9`，会先自动关掉聊天框再执行；发 `esc` 也能关 |
 | 所有输入都没反应、帧也不更新 | 多半是 `esc` 开的暂停菜单或某个界面开着 → 发 `esc` 退出，再用 `W` 试一下 |
@@ -680,7 +681,7 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 | 石镐挖到钻石没掉落 | 钻石矿必须铁镐及以上 |
 | 长途赶路饿死 | 冲刺约 40 格/点饱食度；先备食物再出发 |
 | `Q` 丢了物品但数量没变 | 站着不动会立刻捡回来；丢完先走开再对账 |
-| 想知道熔炉/箱子内容却没有数据 | 先右键打开该容器并保持界面，再读 `:3421/inventory` |
+| 想知道熔炉/箱子内容却没有数据 | 先右键打开该容器并保持界面，再读 `:3420/aif/inventory` |
 | 截图整帧不变 | 等 3~5 秒再截；比对 md5，不要据此判断命令失败 |
 | 方块放不下去 | 目标格被自己碰撞箱占了 → 后退，先 `chat /cmdop look pitch 30` 再对前方 2~3 格右键 |
 | 想转到确定的方向 | 用 `chat /cmdop look yaw <数值>`（相对用 `~`），别再用 `mouse move` 换算像素；发完读 `/info` 核对 |
