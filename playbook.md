@@ -13,7 +13,8 @@
 2. **一次只做一个动作**，做完立刻读 `/info` + `/inventory` 对账。
 3. **死亡后第一件事是 `bt stop` + `release`**，然后立刻读 `/info` 记下死亡坐标。
 4. **掉落物 5 分钟内可以回收**：记下坐标 → 重生 → `bt goto <死亡坐标>`。不要凭「大概来不及」就放弃。
-5. **GUI 优先键盘/指令**：按钮用 `TAB` / `ENTER` / `ESC`，格子用 cmdCraft 的 `/craft` `/furnace` `/chest` `/inventory`；
+5. **GUI 优先键盘/指令**：按钮用 `TAB` / `ENTER` / `ESC`，格子用 cmdCraft 的 `/cmdop craft` `/cmdop furnace` `/cmdop chest` `/cmdop inventory`，
+   准星朝向用 `/cmdop look`；
    手点鼠标只是**没有 cmdCraft 时的兜底**（要手点就先读 `GET :3420/mouse`，再用 `mouse goto <x> <y>` 绝对定位）。
 6. **材料不凭记忆**，动手前先读 `/inventory`。
 7. **`bt mine` 没有数量参数**，定期对账，够了立刻 `bt stop`。
@@ -228,7 +229,7 @@ definitely_not_a_command<--[此处]
 | 性质 | 说明 |
 | --- | --- |
 | 范围 | 上一次 `/msg` 之后的新消息；两次调用之间**不重复、不丢**（缓存上限见模组说明） |
-| 内容 | 聊天栏里的一切：玩家聊天、指令输出、`/craft`·`/furnace`·`/chest` 的回显、Baritone 的输出与报错、加入/退出/死亡提示 |
+| 内容 | 聊天栏里的一切：玩家聊天、指令输出、`/cmdop craft`·`/cmdop furnace`·`/cmdop chest` 的回显、Baritone 的输出与报错、加入/退出/死亡提示 |
 | 形态 | 一条消息一行，原文，不带前缀、不含颜色 |
 | 空结果 | 没有新消息时返回空正文（`200`） |
 
@@ -291,7 +292,7 @@ minecraft:entity.zombie.ambient 1.00 1.00
 | isDown（按住持续生效） | `W` `A` `S` `D`、`mouse left/right` | ✅ | 走路、挖掘、攻击 |
 | consumeClick（点按触发一次） | `E`、`1`~`9`、`Q` | ✅ | 开背包 / 切格 / 丢弃 |
 | 特判 | `esc`、`F3` | ✅ | `esc` 关界面，世界里开暂停菜单 |
-| 滚轮 | `mouse scroll n` | ✅ 但一次只走一格 | 切格用 `/inventory` 更省事 |
+| 滚轮 | `mouse scroll n` | ✅ 但一次只走一格 | 切格用 `/cmdop inventory` 更省事 |
 
 > 发文本一律用 `chat <文本>`（`/` 开头当指令发）和 `bt <命令>`，**不打开聊天框打字**。
 
@@ -309,13 +310,13 @@ minecraft:entity.zombie.ambient 1.00 1.00
 
 ### 其它
 
-* 开背包 `E 50`（再按一次关）。**2×2 配方（木板/木棍/工作台）只要背包界面开着就能 `/craft`**。
-* 切快捷栏：直接按 `1`~`9`；`chat /inventory <物品id> <1-9>` 更好用（按 id 找，不用记位置）。
+* 开背包 `E 50`（再按一次关）。**2×2 配方（木板/木棍/工作台）只要背包界面开着就能 `/cmdop craft`**。
+* 切快捷栏：直接按 `1`~`9`；`chat /cmdop inventory <物品id> <1-9>` 更好用（按 id 找，不用记位置）。
 * `Q` 丢 1 个。丢出的物品落在脚下，站着不动会**立刻被自己捡回来**，对账时别误判成"没丢出去"。
 * `esc` 在世界里会开**暂停菜单**：世界不 tick、Baritone 全停、**画面冻结且所有输入失效**；
   误按再按一次退出。
 * 右键（使用/放置/开界面）和左键（攻击/挖掘）都正常。
-* **聊天栏回显是排错的主要信息来源**（`/craft`、`/furnace`、`/chest`、Baritone 的报错都在里面），
+* **聊天栏回显是排错的主要信息来源**（`/cmdop craft`、`/cmdop furnace`、`/cmdop chest`、Baritone 的报错都在里面），
   发完操作读 **`GET :3421/msg`**（推荐，直接是文本），必要时再 `/prtsc` 看聊天区。
 
 ---
@@ -326,7 +327,7 @@ minecraft:entity.zombie.ambient 1.00 1.00
 
 | 做法 | 结果 |
 | --- | --- |
-| cmdCraft 的 `/craft` `/furnace` `/chest` `/inventory` | ✅ 首选（装了 cmdCraft 时） |
+| cmdCraft 的 `/cmdop craft` `/cmdop furnace` `/cmdop chest` `/cmdop inventory` `/cmdop look` | ✅ 首选（装了 cmdCraft 时） |
 | `TAB` 然后 `ENTER` | ✅ 可靠 |
 | 主菜单 / 选择世界界面直接 `ENTER` | ✅ 激活默认按钮 |
 | `GET :3420/mouse` + `mouse goto` + `mouse left` | ⚠️ **兜底手段**：可用，但仍不如指令可靠，只在没有 cmdCraft 时用 |
@@ -400,14 +401,14 @@ minecraft:entity.zombie.ambient 1.00 1.00
 
 ## 8. 高层动作：cmdCraft
 
-四条客户端指令。和玩家亲手点格子等价。
+五条客户端指令，全部挂在 `/cmdop` 下面。和玩家亲手操作等价。
 
-### `/craft <物品id> [数量]`
+### `/cmdop craft <物品id> [数量]`
 
 ```sh
-curl -s -X POST --data-binary 'chat /craft stone_pickaxe'      http://127.0.0.1:3420
-curl -s -X POST --data-binary 'chat /craft oak_planks 8'       http://127.0.0.1:3420
-curl -s -X POST --data-binary 'chat /craft crafting_table'     http://127.0.0.1:3420
+curl -s -X POST --data-binary 'chat /cmdop craft stone_pickaxe'      http://127.0.0.1:3420
+curl -s -X POST --data-binary 'chat /cmdop craft oak_planks 8'       http://127.0.0.1:3420
+curl -s -X POST --data-binary 'chat /cmdop craft crafting_table'     http://127.0.0.1:3420
 ```
 
 * `数量` 指**产物个数**，会自动向上取整到整数次合成，并把实际结果报在聊天里。
@@ -416,11 +417,11 @@ curl -s -X POST --data-binary 'chat /craft crafting_table'     http://127.0.0.1:
   **镐 / 剑 / 斧 / 熔炉 / 铁砧是 3×3**，在背包里做会报「该配方需要 3×3 的工作台」。
 * **工作台自己是 2×2 配方** —— 这是野外快速起工具的关键路径：
   ```sh
-  chat /craft oak_planks 4      # 1 原木 → 4 木板
-  chat /craft crafting_table    # 4 木板 → 工作台
+  chat /cmdop craft oak_planks 4      # 1 原木 → 4 木板
+  chat /cmdop craft crafting_table    # 4 木板 → 工作台
   ```
   然后把工作台放下去、右键打开，就能做 3×3。
-* **`/craft` 一次只跑一个任务**：连着发两条必须间隔 ≥4 秒，否则第二条会失败。
+* **`/cmdop craft` 一次只跑一个任务**：连着发两条必须间隔 ≥4 秒，否则第二条会失败。
 * 合成格里有东西时会报「合成格不为空」——**把界面关掉再打开**就清空了
   （原版会把格子里的东西退回背包），**不需要用鼠标一个个点回背包**。
 * 打开界面：**背包 2×2 用 `E 50`**；工作台 3×3 要先把工作台放下去，再走过去**右键**它（准星判定）。
@@ -429,11 +430,11 @@ curl -s -X POST --data-binary 'chat /craft crafting_table'     http://127.0.0.1:
 * 任一检查不过就什么都不做，不会半途消耗材料。
 * 报错内容在**聊天栏**，用 `GET :3421/msg` 读。
 
-### `/inventory <物品id> [1-9]`
+### `/cmdop inventory <物品id> [1-9]`
 
 ```sh
-curl -s -X POST --data-binary 'chat /inventory torch 2'    http://127.0.0.1:3420   # 火把换到第 2 格
-curl -s -X POST --data-binary 'chat /inventory iron_pickaxe 1' http://127.0.0.1:3420
+curl -s -X POST --data-binary 'chat /cmdop inventory torch 2'    http://127.0.0.1:3420   # 火把换到第 2 格
+curl -s -X POST --data-binary 'chat /cmdop inventory iron_pickaxe 1' http://127.0.0.1:3420
 ```
 
 把背包里的整叠物品换到指定快捷栏格（原版数字键交换），默认第 1 格。找的是**第一个匹配的整叠**，
@@ -442,12 +443,12 @@ curl -s -X POST --data-binary 'chat /inventory iron_pickaxe 1' http://127.0.0.1:
 > **注意：会把该格原有物品「换出」回主背包**，聊天栏会提示
 > 「已调解：快捷栏第 N 格 ← X ×N（换出 Y ×N）」。别不小心把正在用的工具换走。
 
-### `/furnace put|get <raw|fuel|product> <物品id> [数量]`
+### `/cmdop furnace put|get <raw|fuel|product> <物品id> [数量]`
 
 ```sh
-curl -s -X POST --data-binary 'chat /furnace put raw raw_iron 8'  http://127.0.0.1:3420
-curl -s -X POST --data-binary 'chat /furnace put fuel coal 4'     http://127.0.0.1:3420
-curl -s -X POST --data-binary 'chat /furnace get product'         http://127.0.0.1:3420
+curl -s -X POST --data-binary 'chat /cmdop furnace put raw raw_iron 8'  http://127.0.0.1:3420
+curl -s -X POST --data-binary 'chat /cmdop furnace put fuel coal 4'     http://127.0.0.1:3420
+curl -s -X POST --data-binary 'chat /cmdop furnace get product'         http://127.0.0.1:3420
 ```
 
 * 槽位名就是 `raw` / `fuel` / `product`。
@@ -455,15 +456,29 @@ curl -s -X POST --data-binary 'chat /furnace get product'         http://127.0.0
 * `get raw`/`get fuel` 可以按数量拆；`get product` 不能拆，要多少都会整堆取出并提示。
 * 燃料：煤 8、木板/原木 1.5、木棍 0.5 个物品。
 
-### `/chest put|get <物品id> [数量]`
+### `/cmdop chest put|get <物品id> [数量]`
 
 ```sh
-curl -s -X POST --data-binary 'chat /chest put cobblestone 64'  http://127.0.0.1:3420
-curl -s -X POST --data-binary 'chat /chest get iron_ingot 16'   http://127.0.0.1:3420
+curl -s -X POST --data-binary 'chat /cmdop chest put cobblestone 64'  http://127.0.0.1:3420
+curl -s -X POST --data-binary 'chat /cmdop chest get iron_ingot 16'   http://127.0.0.1:3420
 ```
 
 * **必须开着箱子界面**（箱子 / 陷阱箱 / 大箱子 / 木桶）。
 * `get` 是严格的：箱里不够要的数量就报错，不会只拿一部分。
+
+### `/cmdop look <yaw|pitch> <数值>`
+
+```sh
+curl -s -X POST --data-binary 'chat /cmdop look yaw 90'    http://127.0.0.1:3420   # 把 yaw 设为 90°
+curl -s -X POST --data-binary 'chat /cmdop look yaw ~-20'  http://127.0.0.1:3420   # 当前 yaw 减小 20°
+curl -s -X POST --data-binary 'chat /cmdop look pitch 30'  http://127.0.0.1:3420   # 低头 30°（放方块用）
+```
+
+* 数值用原版 `~` 记法：`90` = 设为 90°，`~0.1` = 当前值 +0.1，`~-20` = 当前值 −20，`~` = 保持不变。
+* 改的就是 `/info` 读到的 `yaw` / `pitch`（客户端每 tick 照常把朝向同步给服务器），**比 `mouse move` 换算像素精确**：
+  要转到确定的方向就用它，不用再做 §13 的像素换算。
+* `pitch` 会夹到 `-90..90`（90 = 正下方），`yaw` 按给定值存、可以超过 ±180。
+* 回显在聊天栏（`已转向 yaw：90.0（原 -60.9）`），发完读 `/info` 核对。
 
 ---
 
@@ -503,10 +518,10 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 ## 11. 放置方块
 
 * 目标格不能被自己的碰撞箱占据——朝脚下放必失败，窄隧道贴脸放也常失败。
-* **正确做法**：`pitch` 调到 **≈30°**，对着前方 **2~3 格**的地面/墙面右键。
+* **正确做法**：先用 `chat /cmdop look pitch 30` 把 `pitch` 调到 **≈30°**，再对着前方 **2~3 格**的地面/墙面右键。
 * 成功放置会播放声音；「方块：被放置」是**隐藏式字幕**（辅助功能里的声音字幕），不在聊天栏，`/msg` 读不到。
 * **右键方块没反应时**：多半是准星没落在方块上（瞄在上沿之外）。
-  用 `F3` 打开调试信息后截图，看准星实际对着哪里，再调 `pitch`。
+  用 `F3` 打开调试信息后截图，看准星实际对着哪里，再用 `chat /cmdop look` 调 `pitch`。
 
 ---
 
@@ -535,7 +550,8 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 
 ### ③ 执行
 
-* 移动/挖掘/放置用 `bt` 或按键；合成/冶炼/存取用 `chat /craft`·`/furnace`·`/chest`·`/inventory`。
+* 移动/挖掘/放置用 `bt` 或按键；合成/冶炼/存取用 `chat /cmdop craft`·`/cmdop furnace`·`/cmdop chest`·`/cmdop inventory`；
+  转视角用 `chat /cmdop look`（不要再用 `mouse move` 算像素）。
 * 玩家自己的背包用 **`E 50`** 打开（关也用 `E`）；工作台/熔炉/箱子这类**方块界面**：**走过去右键**（准星判定），
   不要试图用光标点 GUI；确实没有 cmdCraft、必须手点时见 §13（先读 `/mouse`，再用 `mouse goto`）。
 
@@ -559,7 +575,7 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 
 ## 13. 坐标兜底表（854×480）
 
-> **手点 GUI 不推荐**：正常流程用 `E` 开背包 + cmdCraft 的 `/craft` / `/furnace` / `/chest` / `/inventory`，
+> **手点 GUI 不推荐**：正常流程用 `E` 开背包 + cmdCraft 的 `/cmdop craft` / `/cmdop furnace` / `/cmdop chest` / `/cmdop inventory`，
 > 按钮用 `TAB`/`ENTER`。这张表只在**没有 cmdCraft**、又必须点格子时兜底。
 > 兜底做法：先 `GET :3420/mouse` 读 `光标`（窗口像素，和本表同一坐标系），再
 > `POST :3420 'mouse goto <x> <y>'` + `mouse left`（可以放同一个请求）；
@@ -579,7 +595,9 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 
 **熔炉界面**：`raw (377,123)`、`fuel (377,195)`、`product (497,159)`
 
-**转向换算**：`mouseSensitivity=0.5` 时每 1 像素 ≈ **0.15°**，转 θ 度用 `dx ≈ θ/0.15`；转完用 `/info` 读 yaw 核对。
+**转向**：直接用 `chat /cmdop look yaw <数值>` / `chat /cmdop look pitch <数值>`，绝对方便核对，相对用 `~`。
+只有在**没有 cmdCraft** 时才退回像素换算：`mouseSensitivity=0.5` 时每 1 像素 ≈ **0.15°**，转 θ 度用 `dx ≈ θ/0.15`；
+转完用 `/info` 读 yaw 核对。
 
 **放置方块**：目标格不能被自己的碰撞箱占据——朝脚下放必失败，窄隧道贴脸放也常失败。
 先后退 1~2 格，对着前方 2~3 格的地面/墙面右键。
@@ -601,7 +619,7 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 | 阶段 | 做法 |
 | --- | --- |
 | 0 | **先活下去**：木头 → 工作台 → 木/石工具 → 食物 → 火把 → 铁甲 + 铁剑 + 两把铁镐 |
-| 1 | `bt goto` 到有树的地方 → `bt mine oak_log` → 工作台 → 木镐 → `bt mine stone` → 石镐 → `/craft furnace` |
+| 1 | `bt goto` 到有树的地方 → `bt mine oak_log` → 工作台 → 木镐 → `bt mine stone` → 石镐 → `/cmdop craft furnace` |
 | 2 | `bt mine coal_ore`（燃料/火把）+ `bt mine iron_ore` → 熔炉冶炼 → **铁镐**、铁剑、盾，再做铁甲 |
 | 3 | 需要钻石装备时：备齐火把与食物，下到 y≈-59 挖矿，**定期对账，够了就 `bt stop`** |
 | 4 | 备好进末地的物资：食物、垫脚用的方块（圆石）、弓+箭，或者**床**（炸龙用） |
@@ -650,12 +668,12 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 | 聊天框开着，想开背包/丢东西/切格 | 直接发 `E`/`Q`/`1`~`9`，会先自动关掉聊天框再执行；发 `esc` 也能关 |
 | 所有输入都没反应、帧也不更新 | 多半是 `esc` 开的暂停菜单或某个界面开着 → 发 `esc` 退出，再用 `W` 试一下 |
 | 想合成却打不开合成格 | 2×2 用 `E 50` 开背包；3×3 先放工作台再右键它 |
-| 背包里做不了镐/剑/斧 | 那是 3×3 配方；先 `/craft crafting_table` 就地做工作台 |
-| `/craft` 报 `原料不足：<物品> 需要 N 个` | 材料没备够（木棍最容易漏），先读 `/inventory` 再补 |
-| `/craft` 第二条命令报错 | 一次只跑一个合成，两条之间间隔 ≥4 秒 |
-| `/craft` 报「请先打开工作台」 | 3×3 配方必须先放好工作台并右键打开 |
-| `/craft` 报「合成格不为空」 | **关掉合成界面再打开**即可清空（东西会自动退回背包），不用鼠标去点 |
-| `/inventory` 把工具换没了 | 它会「换出」该格原有物品回主背包，注意格号 |
+| 背包里做不了镐/剑/斧 | 那是 3×3 配方；先 `/cmdop craft crafting_table` 就地做工作台 |
+| `/cmdop craft` 报 `原料不足：<物品> 需要 N 个` | 材料没备够（木棍最容易漏），先读 `/inventory` 再补 |
+| `/cmdop craft` 第二条命令报错 | 一次只跑一个合成，两条之间间隔 ≥4 秒 |
+| `/cmdop craft` 报「请先打开工作台」 | 3×3 配方必须先放好工作台并右键打开 |
+| `/cmdop craft` 报「合成格不为空」 | **关掉合成界面再打开**即可清空（东西会自动退回背包），不用鼠标去点 |
+| `/cmdop inventory` 把工具换没了 | 它会「换出」该格原有物品回主背包，注意格号 |
 | `bt mine <方块>` 没有数量参数 | 它是「挖光能挖到的」；**定期读 `/inventory`，够了就 `bt stop`**，否则工具会挖断 |
 | 无树区域用 `bt mine oak_log` | 它会向下挖去找废弃矿井 → 改用地表 `bt goto` 定向找森林 |
 | 铁镐莫名消失 | autoTool 挖石头也吃耐久 → 下矿前备两把铁镐 |
@@ -664,10 +682,12 @@ curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420
 | `Q` 丢了物品但数量没变 | 站着不动会立刻捡回来；丢完先走开再对账 |
 | 想知道熔炉/箱子内容却没有数据 | 先右键打开该容器并保持界面，再读 `:3421/inventory` |
 | 截图整帧不变 | 等 3~5 秒再截；比对 md5，不要据此判断命令失败 |
-| 方块放不下去 | 目标格被自己碰撞箱占了 → 后退，`pitch≈30°` 对前方 2~3 格 |
+| 方块放不下去 | 目标格被自己碰撞箱占了 → 后退，先 `chat /cmdop look pitch 30` 再对前方 2~3 格右键 |
+| 想转到确定的方向 | 用 `chat /cmdop look yaw <数值>`（相对用 `~`），别再用 `mouse move` 换算像素；发完读 `/info` 核对 |
+| `/cmdop look` 报「无效的角度值」 | 数值只能是数字，相对要带 `~`，例如 `~-20`；`~abc` 会报错 |
 | 右键方块没反应 | 用 `F3` + 截图看准星，通常是瞄在方块上沿之外 |
-| `/furnace put input` 报错 | 槽位名是 `raw`/`fuel`/`product` |
+| `/cmdop furnace put input` 报错 | 槽位名是 `raw`/`fuel`/`product` |
 | 燃料不够 | 煤 8 / 木板·原木 1.5 / 木棍 0.5；先挖煤 |
-| `/chest get` 报错 | 它是严格的，箱里不够就会拒绝，不会拿一部分 |
+| `/cmdop chest get` 报错 | 它是严格的，箱里不够就会拒绝，不会拿一部分 |
 | Baritone 把你带远 | `bt stop` 后读坐标记下，必要时 `bt goto` 回来 |
-| 物品分散在多格 | `/inventory` 找的是第一个匹配整叠；数量对不上时先读 `/inventory` 确认 |
+| 物品分散在多格 | `/cmdop inventory` 找的是第一个匹配整叠；数量对不上时先读 `/inventory` 确认 |
