@@ -5,7 +5,7 @@
 用 LLM 玩 Minecraft 的一套方案：**三个客户端模组 + 一份写给模型的操作手册**（再配上 Baritone 更省事）。
 
 不需要模拟器，也不需要训练视觉模型——游戏里挂上这些模组，把「操作」「状态」「合成」分别变成
-HTTP 接口和聊天指令，LLM 只要会发请求，就能从空手一路玩到击败末影龙。
+`/ctl`、`/aif`、`/op` 三组 HTTP 接口，LLM 只要会发请求，就能从空手一路玩到击败末影龙。
 
 ## 组成
 
@@ -14,7 +14,7 @@ HTTP 接口和聊天指令，LLM 只要会发请求，就能从空手一路玩�
 | [**MGHttpdProvider**](https://github.com/MineAgent/HttpdProvider) | **必需** | `127.0.0.1:3420` | **插座**：共享 HTTP 服务，各模组挂在它的前缀下；`GET /` 列出当前可用的 endpoint |
 | [**mcctl**](https://github.com/MineAgent/mcctl) | **必需** | `127.0.0.1:3420/ctl` | **身体**：按键 / 鼠标 / 视角 / 滚轮 / Baritone / 聊天，另有 `GET /ctl/prtsc` 截图、`GET /ctl/mouse` 光标位置（配合 `mouse goto` 绝对定位） |
 | [**AdvancedInfoFetcher**](https://github.com/MineAgent/AdvancedInfoFetcher) | 可选 | `127.0.0.1:3420/aif` | **眼睛+耳朵**：`GET /aif/info` 坐标 / 朝向 / 生命 / 饱食 / 状态效果，`GET /aif/inventory` 背包 / 副手 / 盔甲 / 熔炉 / 箱子，`GET /aif/world` 维度 / 时间 / 天气，`GET /aif/msg` 聊天栏回显，`GET /aif/sound` 播放过的声音 ID（`GET /aif/keysnd` 只看重要声音） |
-| [**cmdCraft**](https://github.com/MineAgent/cmdCraft) | 可选 | 聊天指令 | **手**：一条 `/cmdop` 下辖 `craft` 合成、`inventory` 换快捷栏、`furnace` 冶炼、`chest` 存取箱子、`look` 转视角 |
+| [**cmdCraft**](https://github.com/MineAgent/cmdCraft) | 可选 | `127.0.0.1:3420/op` | **手**：一条 `POST /op` 下辖 `craft` 合成、`inventory` 换快捷栏、`furnace` 冶炼、`chest` 存取箱子、`look` 转视角 |
 | [**Baritone**](https://github.com/cabaletta/baritone) | 可选 | `bt` 命令 | **腿**：寻路与自动挖矿 |
 | [**playbook.md**](playbook.md) | — | — | 给模型看的操作手册：接口、实测结论、坐标、流程、坑 |
 
@@ -42,7 +42,7 @@ HTTP 接口和聊天指令，LLM 只要会发请求，就能从空手一路玩�
                         │ ③ 执行
         ┌───────────────▼────────────────┐
         │  POST :3420/ctl  'bt mine iron_ore'     腿
-        │  POST :3420/ctl  'chat /cmdop craft ...'  手
+        │  POST :3420/op   'craft iron_pickaxe'   手
         │  POST :3420/ctl  'W 500' / 'mouse left' 身体
         └───────────────┬────────────────┘
                         │ ④ 校验
@@ -59,9 +59,9 @@ curl -s http://127.0.0.1:3420/aif/world                                       # 
 curl -s http://127.0.0.1:3420/aif/msg                                         # 上次读之后的聊天回显
 curl -s http://127.0.0.1:3420/aif/keysnd                                      # 上次读之后的重要声音
 curl -s -X POST --data-binary 'bt mine iron_ore'          http://127.0.0.1:3420/ctl
-curl -s -X POST --data-binary 'chat /cmdop craft iron_pickaxe'  http://127.0.0.1:3420/ctl
-curl -s -X POST --data-binary 'chat /cmdop inventory torch 2'   http://127.0.0.1:3420/ctl
-curl -s -X POST --data-binary 'chat /cmdop look yaw 90'         http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'craft iron_pickaxe'        http://127.0.0.1:3420/op
+curl -s -X POST --data-binary 'inventory torch 2'         http://127.0.0.1:3420/op
+curl -s -X POST --data-binary 'look yaw 90'               http://127.0.0.1:3420/op
 curl -s -o shot.png http://127.0.0.1:3420/ctl/prtsc
 ```
 
@@ -75,8 +75,9 @@ curl -s -o shot.png http://127.0.0.1:3420/ctl/prtsc
   "刚才发生了什么"不用截图就能判断；`GET /world` 则给出维度、时间和天气。
 * **cmdCraft = 手（可选）**：GUI 对 LLM 很不友好——点击有延迟、容易点错格子（mcctl 1.5.0 起虽然能读光标位置、
   也能 `mouse goto` 绝对定位，但手点 GUI 依然只是**没有 cmdCraft 时的兜底**，不推荐）。
-  所以把合成、冶炼、开箱子这些高频动作变成指令，直接发 `ServerboundContainerClickPacket`，
-  和玩家亲手点格子完全等价，服务端照常校验。`/cmdop look` 再把「转视角」从鼠标像素换算变成一个精确指令：
+  所以把合成、冶炼、开箱子这些高频动作变成 `POST :3420/op` 的一条命令，直接发 `ServerboundContainerClickPacket`，
+  和玩家亲手点格子完全等价，服务端照常校验（1.3.2 起从聊天指令 `/cmdop` 改成了 HTTP 接口，命令语法与报错不变）。
+  `look` 再把「转视角」从鼠标像素换算变成一个精确命令：
   绝对角度直接给，相对角度写 `~`，改的就是 `/info` 里的 `yaw` / `pitch`。
 * **Baritone = 腿（可选）**：`bt mine` / `bt goto` 负责寻路和挖矿，比逐步按键高效得多。
 
@@ -91,6 +92,7 @@ cp advanced-info-fetch-*.jar craftcmd-*.jar ~/.minecraft/mods/   # Baritone 另�
 # 4. 启动游戏、进入存档，然后：
 curl http://127.0.0.1:3420/            # 当前可用的 endpoint 列表
 curl http://127.0.0.1:3420/ctl/        # mcctl 使用说明
+curl http://127.0.0.1:3420/op/         # cmdCraft 使用说明（装了 cmdCraft 才有）
 curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetcher 才有）
 ```
 
@@ -98,14 +100,14 @@ curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetch
 
 [`playbook.md`](playbook.md) 是真正交给模型的那份文档，只写「正式游玩时该怎么做」：
 
-* 一个端口（3420：`/ctl` 控制 / `/aif` 信息）的接口与字段（`GET :3420/`、`GET :3420/ctl/`、`GET :3420/aif/` 全文的精简版）
+* 一个端口（3420：`/ctl` 控制 / `/aif` 信息 / `/op` 容器操作）的接口与字段（`GET :3420/`、`GET :3420/ctl/`、`GET :3420/aif/`、`GET :3420/op/` 全文的精简版）
 * **状态与回显**：`/info`、`/inventory`、`/world` 的字段含义，`/msg` 的增量聊天回显
   （指令输出 / Baritone / 报错，读取即清空），以及 `/sound`·`/keysnd` 的增量声音回显
   （`<声音ID> <音量> <音高>`，每播放一次一行；`/keysnd` 与 `/sound` 共用队列，只给重要声音）
 * **输入通道实测结论**：`E` 开背包、`1`-`9` 切格、`Q` 丢弃都通过 HTTP 有效；
   发文本一律走 `chat <文本>` / `bt <命令>`，不通过聊天框打字；
   聊天框开着时 `E`/`Q`/`1`-`9` 会自动先关掉它，`W` 等移动键不受影响（详见手册 §4）
-* `cmdCraft` 五条 `/cmdop` 子指令（`craft` / `inventory` / `furnace` / `chest` / `look`）的前置条件、参数与常用物品 id
+* `cmdCraft` 五条 `POST /op` 子命令（`craft` / `inventory` / `furnace` / `chest` / `look`）的前置条件、参数与常用物品 id
 * 「观察 → 决策 → 执行 → 校验」的循环节奏，以及截图延迟、对账、记坐标这些注意事项
 * 固定分辨率下的坐标表（仅在**没有 cmdCraft**、必须手点时兜底：先 `GET :3420/ctl/mouse` 读光标，再 `mouse goto`）
 * 指定种子与那座已激活的末地传送门，以及从空手到末影龙的路线
@@ -125,7 +127,7 @@ curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetch
 | 能力 | 结果 |
 | --- | --- |
 | 控制接口 | 移动 / 转向 / 视角 / 组合键，截图对比确认生效 |
-| 视角指令 | `/cmdop look yaw 90`、`pitch ~-5` 之后 `/info` 的 `yaw` / `pitch` 与之一致；多人服务端 `data get entity … Rotation` 也是同一组值 |
+| 视角指令 | `POST :3420/op 'look yaw 90'`、`'look pitch ~-5'` 之后 `/info` 的 `yaw` / `pitch` 与之一致；多人服务端 `data get entity … Rotation` 也是同一组值 |
 | 光标接口 | `GET :3420/ctl/mouse` 在暂停菜单给出 `光标：427.0 240.0`、`抓取：否`、`界面：PauseScreen`；`mouse goto 321 202` + `mouse left` 点中「进度」按钮 |
 | 光标在窗口外 | 把指针移到窗口外后 `/mouse` 输出 `光标：不在窗口内，请使用 mouse goto <x> <y>`（用跨平台的 `GLFW_HOVERED` 判断）；照常 `mouse goto` + `mouse left` 仍能点中，且物理指针被拉回窗口内 |
 | 状态接口 | `/info` 的坐标、朝向、选中格与游戏内一致 |
@@ -135,8 +137,8 @@ curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetch
 | 重要声音 | `/keysnd` 过滤掉脚步/音乐/ambient/ui/天气，只留破坏方块、怪物、爆炸等；与 `/sound` 共用一个队列 |
 | Baritone | `bt mine oak_log`、`bt mine stone`、`bt mine iron_ore` 自动寻路挖掘并拾取（实测把玩家从 y=48 带到 y=18） |
 | 合成 | 原木 → 木板 → 工作台 → 木镐 → 石镐 |
-| 冶炼 | `/cmdop furnace put raw raw_iron`、`put fuel`、`get product` 取出铁锭 |
-| 端到端 | 空手 → 原木 → 工作台 → 木镐 → 石镐 → 熔炉 → 铁矿 → 铁锭 → **铁镐**，全程只用 HTTP（`E` 开背包 + `/cmdop craft`，不点 GUI） |
+| 冶炼 | `POST :3420/op 'furnace put raw raw_iron'`、`'furnace put fuel coal'`、`'furnace get product'` 取出铁锭 |
+| 端到端 | 空手 → 原木 → 工作台 → 木镐 → 石镐 → 熔炉 → 铁矿 → 铁锭 → **铁镐**，全程只用 HTTP（`E` 开背包 + `POST :3420/op 'craft …'`，不点 GUI） |
 
 目标是走完整条链：**挖矿 → 铁器 → 末地 → 末影龙。**
 
