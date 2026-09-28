@@ -2,7 +2,7 @@
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](LICENSE)
 
-用 LLM 玩 Minecraft 的一套方案：**三个客户端模组 + 一份写给模型的操作手册**（再配上 Baritone 更省事）。
+用 LLM 玩 Minecraft 的一套方案：**三个客户端模组 + 一个服务端模组 + 一份写给模型的操作手册**（再配上 Baritone 更省事）。
 
 不需要模拟器，也不需要训练视觉模型——游戏里挂上这些模组，把「操作」「状态」「合成」分别变成
 `/ctl`、`/aif`、`/op` 三组 HTTP 接口，LLM 只要会发请求，就能从空手一路玩到击败末影龙。
@@ -15,14 +15,39 @@
 | [**mcctl**](https://github.com/MineAgent/mcctl) | **必需** | `127.0.0.1:3420/ctl` | **身体**：按键 / 鼠标 / 视角 / 滚轮 / Baritone / 聊天，另有 `GET /ctl/prtsc` 截图、`GET /ctl/mouse` 光标位置（配合 `mouse goto` 绝对定位） |
 | [**AdvancedInfoFetcher**](https://github.com/MineAgent/AdvancedInfoFetcher) | 可选 | `127.0.0.1:3420/aif` | **眼睛+耳朵**：`GET /aif/info` 坐标 / 朝向 / 生命 / 饱食 / 状态效果，`GET /aif/inventory` 背包 / 副手 / 盔甲 / 熔炉 / 箱子，`GET /aif/world` 维度 / 时间 / 天气，`GET /aif/msg` 聊天栏回显，`GET /aif/sound` 播放过的声音 ID（`GET /aif/keysnd` 只看重要声音） |
 | [**cmdCraft**](https://github.com/MineAgent/cmdCraft) | 可选 | `127.0.0.1:3420/op` | **手**：一条 `POST /op` 下辖 `craft` 合成、`inventory` 换快捷栏、`furnace` 冶炼、`chest` 存取箱子、`look` 转视角 |
+| [**unlockRecipe**](https://github.com/MineAgent/unlockRecipe) | 可选（用 cmdCraft 时建议装） | —（纯服务端，无 HTTP 接口） | **开局配方书**：谁加入世界就替谁执行 `/recipe give <玩家> *`，让 cmdCraft 从第一秒起就有整本配方可用（见下文） |
 | [**Baritone**](https://github.com/cabaletta/baritone) | 可选 | `bt` 命令 | **腿**：寻路与自动挖矿 |
 | [**playbook.md**](playbook.md) | — | — | 给模型看的操作手册：接口、实测结论、坐标、流程、坑 |
 
-**MGHttpdProvider + mcctl 是硬需求**——前者提供 3420 端口，后者是身体；没有它们就没有任何接口可用。其余三个都是可选增强，但实际游玩时一般都会装上：
+**MGHttpdProvider + mcctl 是硬需求**——前者提供 3420 端口，后者是身体；没有它们就没有任何接口可用。其余几个都是可选增强，但实际游玩时一般都会装上：
 没有 AdvancedInfoFetcher 就只能靠截图猜背包，没有 cmdCraft 就得去点 GUI 格子（可以用
 `GET :3420/ctl/mouse` + `mouse goto` 兜底，但仍然容易点错），没有 Baritone 就只能一步步按键走路。
 
-全部是**客户端**模组，服务端不需要装任何东西，可以在原版 / Fabric / Paper 服务器上用。
+除了 unlockRecipe，其余模组都是**客户端**模组，服务端不需要装任何东西，可以在原版 / Fabric / Paper 服务器上用；
+[**unlockRecipe**](https://github.com/MineAgent/unlockRecipe) 则是**唯一的服务端模组**（Fabric），
+它只解决一件事：让新存档 / 新玩家的配方书一进来就是满的——原因见下一节。
+
+## unlockRecipe：给 cmdCraft 补上「配方书」
+
+cmdCraft 的 `craft` 走的是**客户端配方书**：只有已经解锁的配方才能合成，找不到就返回
+`400 找不到可以合成 <物品> 的配方（配方未解锁或不存在）`，什么都不做。
+而原版是「拿到材料才解锁配方」，所以**每开一个新存档，配方书都要从头攒**——
+对 LLM 来说，开局那一串 `craft`（木板、工作台、木棍、熔炉、铁镐……）只能等材料凑齐才逐个解锁，
+前面几步经常直接卡在那里。
+
+原来的绕法是**非常规手段**：把存档「对局域网开放」并允许其它玩家使用作弊命令（或者建存档时直接勾上允许作弊），
+再用**另一个账号**进房间执行 `/recipe give <玩家> *`——单人存档里房主自己不一定有 OP，
+所以还得有第二个号来发这条命令；每次新建存档都要重来一遍。
+
+[**unlockRecipe**](https://github.com/MineAgent/unlockRecipe) 就是把这段补上：这是一个
+**Fabric 服务端模组**，**只要有人加入世界，就用控制台身份（权限等级 4）替他执行一次
+`/recipe give <玩家> *`**，不记录谁来过、每次加入都执行。
+
+* 存档第一秒起配方书就是满的（实测 1561/1585，剩下 24 个是配方书本来就不收的特殊配方），
+  cmdCraft 的 `craft` 立刻可用——**不用开作弊、不用第二个账号、不用打开局域网**。
+* 单人存档、局域网世界、独立 Fabric 服务端都能用；客户端连别人的服务器时它什么也不做。
+* 服务端不是 Fabric（比如 Paper）时装不了它，那就仍然得用上面的非常规手段，
+  或者按原版节奏自己解锁配方，再不然只能做已经解锁的那些。
 
 ## 它是怎么玩的
 
@@ -79,6 +104,9 @@ curl -s -o shot.png http://127.0.0.1:3420/ctl/prtsc
   和玩家亲手点格子完全等价，服务端照常校验（1.3.2 起从聊天指令 `/cmdop` 改成了 HTTP 接口，命令语法与报错不变）。
   `look` 再把「转视角」从鼠标像素换算变成一个精确命令：
   绝对角度直接给，相对角度写 `~`，改的就是 `/info` 里的 `yaw` / `pitch`。
+* **unlockRecipe = 开局配方书（服务端，可选）**：cmdCraft 只认已经解锁的配方，新存档里配方书要自己攒；
+  它让玩家一加入世界就拿到整本配方书（`/recipe give <玩家> *`），是 cmdCraft 在「新存档 / 新玩家」
+  场景下的补丁，省掉了开作弊 + 第二个账号的绕路。
 * **Baritone = 腿（可选）**：`bt mine` / `bt goto` 负责寻路和挖矿，比逐步按键高效得多。
 
 ## 快速开始
@@ -89,7 +117,9 @@ curl -s -o shot.png http://127.0.0.1:3420/ctl/prtsc
 cp httpdprovider-*.jar mcctl-*.jar ~/.minecraft/mods/
 # 3. 强烈建议一起装的三个（可选，但少了会难受）
 cp advanced-info-fetch-*.jar craftcmd-*.jar ~/.minecraft/mods/   # Baritone 另见其仓库
-# 4. 启动游戏、进入存档，然后：
+# 4. 服务端模组：新存档里想直接用 cmdCraft 合成，就把它也放进 mods/（单人存档同样有效）
+cp unlockrecipe-*.jar ~/.minecraft/mods/
+# 5. 启动游戏、进入存档，然后：
 curl http://127.0.0.1:3420/            # 当前可用的 endpoint 列表
 curl http://127.0.0.1:3420/ctl/        # mcctl 使用说明
 curl http://127.0.0.1:3420/op/         # cmdCraft 使用说明（装了 cmdCraft 才有）
@@ -161,6 +191,7 @@ LICENSE        CC BY-NC-SA 4.0
 （署名—非商业性使用—相同方式共享 4.0 国际），完整文本见 [`LICENSE`](LICENSE)：
 可以自由复制、分发、改编，但必须署名、不得用于商业用途、且衍生作品需以相同许可分发。
 
-文档里提到的三个模组是代码，仍按各自的许可分发——
-[mcctl](https://github.com/MineAgent/mcctl)、[AdvancedInfoFetcher](https://github.com/MineAgent/AdvancedInfoFetcher)
-与 [cmdCraft](https://github.com/MineAgent/cmdCraft) 均为 **LGPL-3.0-only**。
+文档里提到的四个模组是代码，仍按各自的许可分发——
+[mcctl](https://github.com/MineAgent/mcctl)、[AdvancedInfoFetcher](https://github.com/MineAgent/AdvancedInfoFetcher)、
+[cmdCraft](https://github.com/MineAgent/cmdCraft) 与 [unlockRecipe](https://github.com/MineAgent/unlockRecipe)
+均为 **LGPL-3.0-only**。
