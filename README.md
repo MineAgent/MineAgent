@@ -3,7 +3,8 @@
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](LICENSE)
 
 用 LLM 玩 Minecraft 的一套方案：**三个客户端模组 + 一个服务端模组 + 一份写给模型的操作手册**，
-外带两个把这三组接口接进 MCP 生态的仓库（MCP 程序 + DeepSeek Harness 插件），再配上 Baritone 更省事。
+外带两个把这三组接口接进 MCP 生态的仓库（MCP 程序 + DeepSeek Harness 插件），再配上 Baritone（寻路）
+和 NoAutoPause（后台不暂停）更省事。
 
 不需要模拟器，也不需要训练视觉模型——游戏里挂上这些模组，把「操作」「状态」「合成」分别变成
 `/ctl`、`/aif`、`/op` 三组 HTTP 接口，LLM 只要会发请求，就能从空手一路玩到击败末影龙。
@@ -19,11 +20,13 @@
 | [**cmdCraft**](https://github.com/MineAgent/cmdCraft) | 可选 | `127.0.0.1:3420/op` | **手**：一条 `POST /op` 下辖 `craft` 合成、`inventory` 换快捷栏、`furnace` 冶炼、`chest` 存取箱子、`look` 转视角 |
 | [**unlockRecipe**](https://github.com/MineAgent/unlockRecipe) | 可选（用 cmdCraft 时建议装） | —（纯服务端，无 HTTP 接口） | **开局配方书**：谁加入世界就替谁执行 `/recipe give <玩家> *`，让 cmdCraft 从第一秒起就有整本配方可用（见下文） |
 | [**Baritone**](https://github.com/cabaletta/baritone) | 可选 | `bt` 命令 | **腿**：寻路与自动挖矿 |
+| [**NoAutoPause**](https://github.com/MineAgent/noautopause) | 可选 | —（无 HTTP 接口） | **后台可跑**：窗口失去焦点时不暂停游戏，切到后台 / 无人看管时客户端继续 tick（见下文） |
 | [**playbook.md**](playbook.md) | — | — | 给模型看的操作手册：接口、实测结论、坐标、流程、坑 |
 
 **MGHttpdProvider + mcctl 是硬需求**——前者提供 3420 端口，后者是身体；没有它们就没有任何接口可用。其余几个都是可选增强，但实际游玩时一般都会装上：
 没有 AdvancedInfoFetcher 就只能靠截图猜背包，没有 cmdCraft 就得去点 GUI 格子（可以用
-`GET :3420/ctl/mouse` + `mouse goto` 兜底，但仍然容易点错），没有 Baritone 就只能一步步按键走路。
+`GET :3420/ctl/mouse` + `mouse goto` 兜底，但仍然容易点错），没有 Baritone 就只能一步步按键走路，
+没有 NoAutoPause 则单人存档一失去焦点就暂停——把游戏丢在后台操作时，注入的按键全部落空。
 
 除了 unlockRecipe，其余模组都是**客户端**模组，服务端不需要装任何东西，可以在原版 / Fabric / Paper 服务器上用；
 [**unlockRecipe**](https://github.com/MineAgent/unlockRecipe) 则是**唯一的服务端模组**（Fabric），
@@ -136,6 +139,12 @@ curl -s -o shot.png http://127.0.0.1:3420/ctl/prtsc
   它让玩家一加入世界就拿到整本配方书（`/recipe give <玩家> *`），是 cmdCraft 在「新存档 / 新玩家」
   场景下的补丁，省掉了开作弊 + 第二个账号的绕路。
 * **Baritone = 腿（可选）**：`bt mine` / `bt goto` 负责寻路和挖矿，比逐步按键高效得多。
+* **NoAutoPause = 后台可跑（可选）**：这套方案本来就是「游戏在后台，agent 通过 3420 操作」，
+  而原版在单人存档里一失去焦点就暂停（失焦 500ms 后自动弹出暂停菜单），世界不再 tick，
+  注入的按键和 `bt` 命令全部落空。它只把 `Options.pauseOnLostFocus` 置为 `false`（只写一次），
+  其余暂停行为不受影响——按 ESC 打开菜单、单人菜单里的对局域网开放等照常暂停。
+  不依赖 Fabric API，只关掉「失焦暂停」这一个开关。
+  同功能原来内嵌在 [MineAgentAIO](https://github.com/MineAgent/MineAgentAIO) 里，现在独立成一个模组。
 
 ## 快速开始
 
@@ -145,9 +154,11 @@ curl -s -o shot.png http://127.0.0.1:3420/ctl/prtsc
 cp httpdprovider-*.jar mcctl-*.jar ~/.minecraft/mods/
 # 3. 强烈建议一起装的三个（可选，但少了会难受）
 cp advanced-info-fetch-*.jar craftcmd-*.jar ~/.minecraft/mods/   # Baritone 另见其仓库
-# 4. 服务端模组：新存档里想直接用 cmdCraft 合成，就把它也放进 mods/（单人存档同样有效）
+# 4. 后台跑：窗口失焦也不暂停，无人看管时注入的按键才有效（可选，后台操作建议装）
+cp noautopause-*.jar ~/.minecraft/mods/
+# 5. 服务端模组：新存档里想直接用 cmdCraft 合成，就把它也放进 mods/（单人存档同样有效）
 cp unlockrecipe-*.jar ~/.minecraft/mods/
-# 5. 启动游戏、进入存档，然后：
+# 6. 启动游戏、进入存档，然后：
 curl http://127.0.0.1:3420/            # 当前可用的 endpoint 列表
 curl http://127.0.0.1:3420/ctl/        # mcctl 使用说明
 curl http://127.0.0.1:3420/op/         # cmdCraft 使用说明（装了 cmdCraft 才有）
@@ -196,6 +207,7 @@ curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetch
 | 聊天回显 | `/msg` 增量返回玩家聊天、指令输出、Baritone 输出与报错，逐条与客户端日志的 `[CHAT]` 一致，读完再次请求为空 |
 | 声音回显 | `/sound` 增量返回播出音效的命名空间 ID、请求音量与音高；挖石头得到 `minecraft:block.stone.break`，未知/被静音跳过的音效不出现 |
 | 重要声音 | `/keysnd` 过滤掉脚步/音乐/ambient/ui/天气，只留破坏方块、怪物、爆炸等；与 `/sound` 共用一个队列 |
+| 失焦不暂停 | 装 [NoAutoPause](https://github.com/MineAgent/noautopause)：把窗口焦点交给另一个 X 窗口后，`/ctl/mouse` 仍是 `界面：无`、`抓取：是`，`/world` 的 `游戏刻` 继续增长；同一个实例**不装**它时（`options.txt` 里 `pauseOnLostFocus:true`），失焦 500ms 后变成 `界面：PauseScreen`、`抓取：否`，世界停止 tick |
 | Baritone | `bt mine oak_log`、`bt mine stone`、`bt mine iron_ore` 自动寻路挖掘并拾取（实测把玩家从 y=48 带到 y=18） |
 | 合成 | 原木 → 木板 → 工作台 → 木镐 → 石镐 |
 | 冶炼 | `POST :3420/op 'furnace put raw raw_iron'`、`'furnace put fuel coal'`、`'furnace get product'` 取出铁锭 |
@@ -227,9 +239,10 @@ LICENSE          CC BY-NC-SA 4.0
 （署名—非商业性使用—相同方式共享 4.0 国际），完整文本见 [`LICENSE`](LICENSE)：
 可以自由复制、分发、改编，但必须署名、不得用于商业用途、且衍生作品需以相同许可分发。
 
-文档里提到的四个模组是代码，仍按各自的许可分发——
+文档里提到的五个模组是代码，仍按各自的许可分发——
 [mcctl](https://github.com/MineAgent/mcctl)、[AdvancedInfoFetcher](https://github.com/MineAgent/AdvancedInfoFetcher)、
-[cmdCraft](https://github.com/MineAgent/cmdCraft) 与 [unlockRecipe](https://github.com/MineAgent/unlockRecipe)
+[cmdCraft](https://github.com/MineAgent/cmdCraft)、[unlockRecipe](https://github.com/MineAgent/unlockRecipe)
+与 [noautopause](https://github.com/MineAgent/noautopause)
 均为 **LGPL-3.0-only**。
 
 本文档另外提到的两个仓库同样是「代码 + 文档」分开授权：
