@@ -9,6 +9,8 @@
 不需要模拟器，也不需要训练视觉模型——游戏里挂上这些模组，把「操作」「状态」「合成」分别变成
 `/ctl`、`/aif`、`/op` 三组 HTTP 接口，LLM 只要会发请求，就能从空手一路玩到击败末影龙。
 会用 MCP 的客户端可以省掉自己拼请求这一步，直接启动下面那个 MCP 程序。
+反过来，**写 Fabric 模组时它也是一套现成的实测环境**：agent 可以自己起客户端、造场景、读状态和日志
+（见下文「也能拿它开发模组」）。
 
 ## 组成
 
@@ -57,6 +59,32 @@ dsh plugin --profile web add github:MineAgent/MCPServerDSHPlug
 
 游戏侧不变：仍然是上面那几个模组在同一台机器上提供 3420 服务，MCP 程序只是又一个调用方。
 `chat` / `sounds` 这类「读取即清空」的增量回显、`/op` 的前置条件，都原样映射成工具说明。
+
+## 也能拿它开发模组：vibe coding 写 Fabric 模组
+
+这套接口不只是「让 agent 玩游戏」。写 Fabric 模组时最烦的一步恰恰是**验证**：改完代码得有人真的把客户端
+跑起来，进存档、摆好场景、手动操作一遍、再翻日志——而这正是 `/ctl`、`/aif`、`/op` 已经包好的能力。
+把这些接口交给写代码的 agent，它就能自己把「改代码 → 真机验证」这个循环跑完：
+
+1. `./gradlew build` 出 jar，拷进 `~/.minecraft/mods/`；
+2. 用一份启动脚本起客户端（例如 `TestSave.sh` 里的 `--quickPlaySingleplayer <存档>`，直接进世界，不用点菜单）；
+3. 等 3420 起来后先自检：`GET /` 看端点在不在、`GET /aif/world` 确认**真的进了世界**，而不是靠 sleep 猜；
+4. 要什么场景就用接口造：`POST /ctl` 按键 / 鼠标 / 聊天 / `bt` 指令，`POST /op` 合成、换快捷栏、开关熔炉和箱子；
+5. 判结果不用猜：`GET /ctl/prtsc` 截图，`GET /aif/msg` 读聊天栏回显（模组自己的输出、报错、Baritone 反馈都在里面），
+   `GET /aif/info`·`/inventory`·`/world` 读状态，`GET /aif/keysnd` 听关键声音；再加上直接读
+   `~/.minecraft/logs/latest.log` 和 `crash-reports/`（这两样走文件工具，不经过 3420）；
+6. 对不上就回去改代码，从第 1 步重来；测完把实例停掉。
+
+配上上面那个可选的 [noautopause](https://github.com/MineAgent/noautopause)，游戏可以一直丢在后台，
+agent 不需要抢你正在用的窗口——`./gradlew build` 和游戏实例互不打扰。
+
+**这时候不要用「MC 模式」。** MC 模式的工具面被收成只剩 `mcp__minecraft__*`：agent 读写不了源码、
+跑不了 gradle、也看不到 `latest.log`，它只能「玩」，没法「改」。开发模组要用**标准模式这类带终端和
+文件工具的通用模式**，把 MC 工具当成其中一个能力——一边改代码，一边用上面那套接口做真机验证。
+
+本仓库提到的几个模组（包括 [MineAgentAIO](https://github.com/MineAgent/MineAgentAIO) 的合并、
+[noautopause](https://github.com/MineAgent/noautopause) 的抽取）自己就是这么开发和实测出来的：
+「构建 → 起客户端 → 用 3420 观察和操作 → 读日志 → 改代码」。
 
 ## unlockRecipe：给 cmdCraft 补上「配方书」
 
