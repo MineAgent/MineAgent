@@ -2,10 +2,12 @@
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](LICENSE)
 
-用 LLM 玩 Minecraft 的一套方案：**三个客户端模组 + 一个服务端模组 + 一份写给模型的操作手册**（再配上 Baritone 更省事）。
+用 LLM 玩 Minecraft 的一套方案：**三个客户端模组 + 一个服务端模组 + 一份写给模型的操作手册**，
+外带两个把这三组接口接进 MCP 生态的仓库（MCP 程序 + DeepSeek Harness 插件），再配上 Baritone 更省事。
 
 不需要模拟器，也不需要训练视觉模型——游戏里挂上这些模组，把「操作」「状态」「合成」分别变成
 `/ctl`、`/aif`、`/op` 三组 HTTP 接口，LLM 只要会发请求，就能从空手一路玩到击败末影龙。
+会用 MCP 的客户端可以省掉自己拼请求这一步，直接启动下面那个 MCP 程序。
 
 ## 组成
 
@@ -26,6 +28,28 @@
 除了 unlockRecipe，其余模组都是**客户端**模组，服务端不需要装任何东西，可以在原版 / Fabric / Paper 服务器上用；
 [**unlockRecipe**](https://github.com/MineAgent/unlockRecipe) 则是**唯一的服务端模组**（Fabric），
 它只解决一件事：让新存档 / 新玩家的配方书一进来就是满的——原因见下一节。
+
+## 接进 MCP（可选）
+
+不想自己拼 HTTP 请求的客户端，可以再装这两个仓库：它们把 `/ctl`、`/aif`、`/op` 变成一个 MCP 程序，
+并给 DeepSeek Harness 配好一个只留游戏能力的「MC 模式」。
+
+| 仓库 | 作用 |
+| --- | --- |
+| [**MCPServer**](https://github.com/MineAgent/MCPServer) | **MCP stdio 程序**：把三组接口包成 11 个工具——`status` / `help` / `player` / `inventory` / `world` / `chat` / `sounds` / `screenshot` / `cursor` / `control` / `op`；任何支持 stdio 的 MCP 客户端都能直接启动，也可以 `import` 当库用。游戏没开时工具返回一句可读的中文错误，而不是超时 |
+| [**MCPServerDSHPlug**](https://github.com/MineAgent/MCPServerDSHPlug) | **DeepSeek Harness bundle**：一行 `dsh-mcp-client` 配置把上面的程序接进 profile（工具名 `mcp__minecraft__*`），并声明「MC 模式」agent preset——工具面收到 `mcp__minecraft__*` 加 `todo_write` / `create_goal` / `get_goal` / `update_goal` / `exit_plan_mode` / `ask_user_question`，系统提示词只讲游戏里的操作节奏，玩法留给用户在对话里说 |
+
+```bash
+git clone git@github.com:MineAgent/MCPServer.git && cd MCPServer
+npx --yes pnpm@12 install
+node bin/minecraft-mcp-bridge.mjs --help          # --url 可指向别的端口
+
+# DeepSeek Harness：装完新建一个「MC 模式」任务
+dsh plugin --profile web add github:MineAgent/MCPServerDSHPlug
+```
+
+游戏侧不变：仍然是上面那几个模组在同一台机器上提供 3420 服务，MCP 程序只是又一个调用方。
+`chat` / `sounds` 这类「读取即清空」的增量回显、`/op` 的前置条件，都原样映射成工具说明。
 
 ## unlockRecipe：给 cmdCraft 补上「配方书」
 
@@ -170,6 +194,10 @@ curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetch
 | 冶炼 | `POST :3420/op 'furnace put raw raw_iron'`、`'furnace put fuel coal'`、`'furnace get product'` 取出铁锭 |
 | 端到端 | 空手 → 原木 → 工作台 → 木镐 → 石镐 → 熔炉 → 铁矿 → 铁锭 → **铁镐**，全程只用 HTTP（`E` 开背包 + `POST :3420/op 'craft …'`，不点 GUI） |
 
+另外，[MCPServer](https://github.com/MineAgent/MCPServer) 在同一个实例上实测过：11 个工具全部可用，
+`screenshot` 直接返回 854×480 的 PNG，`control F3` 注入后截图里能看到调试屏出现、坐标与 `/aif/info` 一致，
+再按一次 `F3` 复原；`chat` / `sounds` 这类增量回显读完再次请求为空。
+
 目标是走完整条链：**挖矿 → 铁器 → 末地 → 末影龙。**
 
 手册针对一个固定世界：种子 **`-818810680825819701`**，并且在 **1697 -2 1124** 有一座**已经激活的末地传送门**。
@@ -195,3 +223,8 @@ LICENSE        CC BY-NC-SA 4.0
 [mcctl](https://github.com/MineAgent/mcctl)、[AdvancedInfoFetcher](https://github.com/MineAgent/AdvancedInfoFetcher)、
 [cmdCraft](https://github.com/MineAgent/cmdCraft) 与 [unlockRecipe](https://github.com/MineAgent/unlockRecipe)
 均为 **LGPL-3.0-only**。
+
+本文档另外提到的两个仓库同样是「代码 + 文档」分开授权：
+[MCPServer](https://github.com/MineAgent/MCPServer) 与
+[MCPServerDSHPlug](https://github.com/MineAgent/MCPServerDSHPlug) 的**代码与配置**为 **GPL-3.0-only**，
+**文档**为 **CC BY-NC-SA 4.0**。
