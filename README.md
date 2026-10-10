@@ -39,6 +39,10 @@
 | [**MCPServer**](https://github.com/MineAgent/MCPServer) | **MCP stdio 程序**：把三组接口包成 11 个工具——`status` / `help` / `player` / `inventory` / `world` / `chat` / `sounds` / `screenshot` / `cursor` / `control` / `op`；任何支持 stdio 的 MCP 客户端都能直接启动，也可以 `import` 当库用。游戏没开时工具返回一句可读的中文错误，而不是超时 |
 | [**MCPServerDSHPlug**](https://github.com/MineAgent/MCPServerDSHPlug) | **DeepSeek Harness bundle**：一行 `dsh-mcp-client` 配置把上面的程序接进 profile（工具名 `mcp__minecraft__*`），并声明「MC 模式」agent preset——工具面收到 `mcp__minecraft__*` 加 `todo_write` / `create_goal` / `get_goal` / `update_goal` / `exit_plan_mode` / `ask_user_question`，系统提示词只讲游戏里的操作节奏，玩法留给用户在对话里说 |
 
+**推荐用「MC 模式」跑下面这份手册。** 它只保留游戏工具（`mcp__minecraft__*` 加少量流程工具），
+agent 遇到卡点只能在游戏里换做法、先观察或者问用户；换成标准模式这类通用模式，它手里还有终端和文件工具，
+很容易转去写脚本、直接 `curl` 3420、翻日志，甚至动手改模组——把「玩游戏」变成「折腾环境」。
+
 ```bash
 git clone git@github.com:MineAgent/MCPServer.git && cd MCPServer
 npx --yes pnpm@12 install
@@ -152,7 +156,10 @@ curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetch
 
 ## 手册
 
-[`playbook.md`](playbook.md) 是真正交给模型的那份文档，只写「正式游玩时该怎么做」：
+[`playbook.md`](playbook.md) 是真正交给模型的那份文档，只写「正式游玩时该怎么做」。
+在 DSH 里用它的 MCP 版：[`playbook-dsh.md`](playbook-dsh.md)——游戏策略、坐标、路线与之一致，
+但接口层全部换成 MC 模式的工具（`player()`、`control(...)`、`op(...)`），
+并补了 DSH 特有的纪律（工具面只有游戏、`todo_write` / `create_goal` 的用法、上下文预算）。
 
 * 一个端口（3420：`/ctl` 控制 / `/aif` 信息 / `/op` 容器操作）的接口与字段（`GET :3420/`、`GET :3420/ctl/`、`GET :3420/aif/`、`GET :3420/op/` 全文的精简版）
 * **状态与回显**：`/info`、`/inventory`、`/world` 的字段含义，`/msg` 的增量聊天回显
@@ -206,9 +213,10 @@ curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetch
 ## 本仓库
 
 ```
-README.md      本文件
-playbook.md    给模型看的操作手册
-LICENSE        CC BY-NC-SA 4.0
+README.md        本文件
+playbook.md      给模型看的操作手册
+playbook-dsh.md  同一份手册的 DSH / MC 模式版
+LICENSE          CC BY-NC-SA 4.0
 ```
 
 只放文档，不放代码。
