@@ -13,8 +13,7 @@
 2. **一次只做一个动作**，做完立刻 `player()` + `inventory()` 对账。
 3. **死亡后第一件事**：`control("bt stop")` + `control("release")`，然后 `player()` 记下死亡坐标。
 4. **掉落物 5 分钟内可以回收**：记下坐标 → 重生 → `control("bt goto <死亡坐标>")`；只在区块被加载时计时。
-5. **格子操作一律 `op(...)`，按钮一律 `control("TAB")` / `control("ENTER")`；**
-   手点鼠标只是没有 `op` 可用时的兜底：`screenshot()` → `cursor()` → `control("mouse goto <x> <y>")` + `control("mouse left")`。
+5. **格子操作一律 `op(...)`，按钮一律 `control("TAB")` / `control("ENTER")`**（手点鼠标是兜底，见 §3）。
 6. **材料不凭记忆**，动手前先 `inventory()`。
 7. **`bt mine` 没有数量参数**：定期 `player()` + `inventory()` 对账，够了立刻 `control("bt stop")`。
 8. **钻石矿必须铁镐及以上**；下矿前备好两把铁镐。
@@ -29,39 +28,18 @@
 ## 1. 开工自检
 
 ```
-status()        // 控制服务在不在、/ctl /aif /op 三个接口各是否挂载、有没有进世界
-player()        // 坐标 / 朝向 / 生命 / 饱食
-world()         // 维度 / 时间 / 天气
-inventory()     // 背包 / 副手 / 盔甲 / 快捷栏 / 打开的容器
+status()
+player()
+world()
+inventory()
 ```
 
 * `status()` 报「未进入世界」就先处理界面（`control("TAB")` + `control("ENTER")` 激活默认按钮）。
 * 语法拿不准时读权威全文：`help("ctl")` / `help("aif")` / `help("op")`（**内容较长，按需读**）。
 
-`status()` 报哪个接口不可用，对应工具就会返回原因；没有 `op` 时格子操作改用
-`control("TAB")` / `control("ENTER")` 导航，别手点鼠标。`control("bt …")` 需要 Baritone。
-
 ---
 
-## 2. 工具速查
-
-| 工具 | 用途 |
-| --- | --- |
-| `status()` | 自检：服务、三个接口、是否进世界 |
-| `help(prefix)` | `ctl` / `aif` / `op` 的完整使用说明 |
-| `player()` | 坐标 / 朝向 / 生命 / 饱食 / 状态效果 |
-| `inventory()` | 背包 / 副手 / 盔甲 / 快捷栏 / 打开的熔炉·箱子 |
-| `world()` | 维度 / 时间 / 天数 / 天气 |
-| `chat()` | 上次读取之后的聊天回显（**读取即清空**） |
-| `sounds(filter)` | 上次读取之后的声音（**读取即清空**），默认只看重要的 |
-| `screenshot()` | 当前帧 PNG（图片，占上下文） |
-| `cursor()` | 光标位置 / 是否被抓取 / 当前界面类名 |
-| `control(command, waitMs?)` | 按键 / 鼠标 / 视角 / `bt` / `chat` / `type` |
-| `op(command)` | `craft` / `inventory` / `furnace` / `chest` / `look` |
-
----
-
-## 3. 观测要点
+## 2. 观测要点
 
 * **`player()` / `inventory()`**：对账主力。动作前后各读一次，看材料少了多少、产物多了多少。
 * **`inventory()`**：想知道某个容器里有什么，**先走过去右键打开它**，再读；熔炉的燃烧进度也在这里。
@@ -74,42 +52,18 @@ inventory()     // 背包 / 副手 / 盔甲 / 快捷栏 / 打开的容器
 
 ---
 
-## 4. 操作要点
+## 3. GUI 纪律
 
-**`control(command, waitMs?)`** —— 走原版输入管线，多行或 `;` 分隔按顺序执行。
-按键类命令是**排队后立刻返回**的，定时动作要配合 `waitMs` 等它做完：
+**按钮一律用键盘**：`control("TAB")` 移焦点、`control("ENTER")` 激活；主菜单 / 选择世界界面
+直接 `ENTER` 激活默认按钮（世界条目要**先选中**）。格子操作用 `op(...)`，不要点格子。
 
-```
-control("W 500", waitMs=600)        // 按住 W 500ms，等它做完再返回
-control("W+Ctrl 100")               // 组合键
-control("mouse left")               // 左键
-control("mouse move +30 -80")        // 相对转视角
-control("mouse goto 325 123")        // 光标绝对定位（界面开着时）
-control("bt stop")                   // Baritone
-control("bt goto 1697 -2 1124")
-control("bt mine iron_ore")
-control("chat 你好")                 // 发聊天；以 / 开头当指令
-control("T 50\ntype hello\ntypeEnter")  // 需要打字时（一个请求里按序执行）
-```
-
-**`op(command)`** —— 容器/合成操作，**等真正执行完才返回**：成功给结果文本，被拒给原因。
-
-```
-op("craft stick 4")                  // 用背包材料合成；3×3 配方要先打开工作台界面
-op("inventory iron_pickaxe 3")       // 换到快捷栏第 3 格
-op("furnace put raw raw_iron 8")     // 先打开熔炉界面
-op("furnace get product")
-op("chest put cobblestone 64")       // 先打开箱子界面
-op("look yaw 90")                    // 精确转向；支持 ~ 相对值
-```
-
-**GUI 纪律**：按钮用 `control("TAB")` + `control("ENTER")`；格子操作用 `op(...)`；
-主菜单/选择世界界面直接 `ENTER` 激活默认按钮（世界条目要先选中）。
-手点鼠标只在没有 `op` 时兜底，而且要先 `screenshot()` 看清界面、`cursor()` 读坐标。
+**手点鼠标是兜底**（只在 `op` 不可用时）：`screenshot()` 看清界面 → `cursor()` 读 `光标`
+（窗口像素坐标）→ `control("mouse goto <x> <y>")` → `control("mouse left")`。
+`mouse move` + `mouse left` 靠相对位移会累积误差，不用。
 
 ---
 
-## 5. 决策循环
+## 4. 决策循环
 
 ```
 ① 观察  player() + inventory() + world()
@@ -121,25 +75,22 @@ op("look yaw 90")                    // 精确转向；支持 ~ 相对值
 
 * **一次只做一个动作**，别把「挖矿 + 合成 + 冶炼」塞进一个请求里。
 * 材料够不够先看 `inventory()`，别凭记忆；目标优先级：活下来 ＞ 攒装备 ＞ 赶到传送门 ＞ 打龙。
-* `op(...)` 的响应就是结果（成功给产物，失败给原因，例如「原料不足：需要 4 个，背包中只有 0 个」），
-  按原因补齐材料或界面状态再试；`control("bt …")` 没装 Baritone 时**整个请求失败**，不会退化成聊天。
+* `op(...)` 返回的正文就是结果或原因，按原因补齐材料、界面状态再试。
 * 拿不准的操作先发一次看回显（例如不确认物品 id），再决定下一步。
 
 ---
 
-## 6. 额外纪律
+## 5. 额外纪律
 
-* **多步任务用 `todo_write`** 记录进度（一次列全，做一步更新一步）；**跨轮次的长期目标用
-  `create_goal`** 建立，`get_goal` 查看，`update_goal` 更新或结束。
-* **需要用户拍板时用 `ask_user_question`**（例如选哪条路线、要不要冒险下矿）；
-  提交方案等待确认用 `exit_plan_mode`。
+* 多步任务用 `todo_write` 记进度（一次列全，做一步更新一步），跨轮次目标用 `create_goal` /
+  `get_goal` / `update_goal`；需要用户拍板用 `ask_user_question`，提交方案等待确认用 `exit_plan_mode`。
 * **上下文预算**：`screenshot()` 和 `help(...)` 全文都很大，按需取；`chat()` / `sounds()` 读完即空，
   不要重复读；一屏截图能回答的问题就不要连截三张。
 * **卡住了先自检**：`status()` → `player()` → `chat()`，确认是「没做成」还是「没读对」。
 
 ---
 
-## 7. 生存纪律
+## 6. 生存纪律
 
 **下矿前检查清单**：食物备足（饱食度 < 18 不能回血）· 火把（照明 + 防刷怪）· 铁盔甲 + 石/铁剑 ·
 **两把铁镐** · 血满饱食满 · 记下矿洞口坐标。
@@ -152,7 +103,7 @@ op("look yaw 90")                    // 精确转向；支持 ~ 相对值
 
 ---
 
-## 8. 死亡处理
+## 7. 死亡处理
 
 死亡不是进度结束，而是**一个必须在 5 分钟内执行的回收任务**：
 
@@ -166,7 +117,7 @@ op("look yaw 90")                    // 精确转向；支持 ~ 相对值
 
 ---
 
-## 9. 通关路线
+## 8. 通关路线
 
 **种子 `-818810680825819701`，`1697 -2 1124` 有一座已经激活的末地传送门**——不用去下界，
 不用凑末影珍珠/之眼，拿到基础装备后直接赶过去。
@@ -188,15 +139,12 @@ op("look yaw 90")                    // 精确转向；支持 ~ 相对值
 
 ---
 
-## 10. 坑速查
+## 9. 坑速查
 
 | 坑 | 对策 |
 | --- | --- |
-| 死亡后掉落物没回收 | 死亡瞬间 `player()` 记坐标 → `bt stop` → 重生 → `bt goto` 回去 |
-| `chat()` 读完是空的 | 它只给「上次读取之后」的内容；读完立刻把要点记进上下文或 todo |
 | 合成返回「配方未解锁」 | 服务端没装 unlockRecipe 时配方书要自己攒；先凑材料解锁，或换别的做法 |
 | `op("craft …")` 慢 | 它要等合成真正做完（可能数十秒），这期间别并发做别的事 |
 | Baritone 一直在跑 | 它有任务状态；换目标或死亡后先 `bt stop`，再看回显 |
-| 截图看不出光标 | 截图不含系统光标；要坐标就 `cursor()` |
 | `control` 发完没反应 | 命令是排队执行的；定时动作配 `waitMs`，或隔一步再 `chat()` / `player()` 对账 |
 | 天黑被怪围 | 提前看 `world()`；火把 + 高处过夜，或干脆撤回基地 |
