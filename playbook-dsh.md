@@ -1,13 +1,6 @@
-<!-- SPDX-License-Identifier: CC-BY-NC-SA 4.0 -->
-<!-- Copyright (C) 2026 MineAgent -->
+# Minecraft 通关操作手册
 
-# Minecraft 通关操作手册（DSH / MC 模式版）
-
-给模型看的操作手册，**接口层换成「MC 模式」的 MCP 工具**。窗口固定 **854×480**（guiScale=2）。
-
-游戏策略、坐标、路线与 [`playbook.md`](playbook.md) 完全一致，只是调用方式变了：
-原来的 `curl` / `GET :3420/aif/info` 一律换成工具调用。需要原始 HTTP 细节时对照
-playbook.md 的 §2–§4、§8；本文件是 DSH 里真正要照着做的那份。
+给模型看的操作手册。窗口固定 **854×480**（guiScale=2）。
 
 **世界固定使用种子 `-818810680825819701`；末地传送门已激活，位于 `1697 -2 1124`。**
 整条路线的目标就是攒够装备然后赶到那里。
@@ -45,26 +38,26 @@ inventory()     // 背包 / 副手 / 盔甲 / 快捷栏 / 打开的容器
 * `status()` 报「未进入世界」就先处理界面（`control("TAB")` + `control("ENTER")` 激活默认按钮）。
 * 语法拿不准时读权威全文：`help("ctl")` / `help("aif")` / `help("op")`（**内容较长，按需读**）。
 
-装了哪些模组决定能用哪些手段：没有 `aif` 类工具就只能靠 `screenshot()` 判断背包和血量；
-没有 `op` 就只能点 GUI 格子（**不推荐**）；没有 Baritone，`control("bt …")` 会失败（返回 400）。
+`status()` 报哪个接口不可用，对应工具就会返回原因；没有 `op` 时格子操作改用
+`control("TAB")` / `control("ENTER")` 导航，别手点鼠标。`control("bt …")` 需要 Baritone。
 
 ---
 
 ## 2. 工具速查
 
-| 工具 | 用途 | 对应接口 |
-| --- | --- | --- |
-| `status()` | 自检：服务、三个接口、是否进世界 | `GET /` |
-| `help(prefix)` | `ctl` / `aif` / `op` 的权威使用说明 | `GET /<prefix>/` |
-| `player()` | 坐标 / 朝向 / 生命 / 饱食 / 状态效果 | `GET /aif/info` |
-| `inventory()` | 背包 / 副手 / 盔甲 / 快捷栏 / 打开的熔炉·箱子 | `GET /aif/inventory` |
-| `world()` | 维度 / 时间 / 天数 / 天气 | `GET /aif/world` |
-| `chat()` | 上次读取之后的聊天回显（**读取即清空**） | `GET /aif/msg` |
-| `sounds(filter)` | 上次读取之后的声音（**读取即清空**），默认只看重要的 | `GET /aif/keysnd` |
-| `screenshot()` | 当前帧 PNG（图片，占上下文） | `GET /ctl/prtsc` |
-| `cursor()` | 光标位置 / 是否被抓取 / 当前界面类名 | `GET /ctl/mouse` |
-| `control(command, waitMs?)` | 按键 / 鼠标 / 视角 / `bt` / `chat` / `type` | `POST /ctl/` |
-| `op(command)` | `craft` / `inventory` / `furnace` / `chest` / `look` | `POST /op/` |
+| 工具 | 用途 |
+| --- | --- |
+| `status()` | 自检：服务、三个接口、是否进世界 |
+| `help(prefix)` | `ctl` / `aif` / `op` 的完整使用说明 |
+| `player()` | 坐标 / 朝向 / 生命 / 饱食 / 状态效果 |
+| `inventory()` | 背包 / 副手 / 盔甲 / 快捷栏 / 打开的熔炉·箱子 |
+| `world()` | 维度 / 时间 / 天数 / 天气 |
+| `chat()` | 上次读取之后的聊天回显（**读取即清空**） |
+| `sounds(filter)` | 上次读取之后的声音（**读取即清空**），默认只看重要的 |
+| `screenshot()` | 当前帧 PNG（图片，占上下文） |
+| `cursor()` | 光标位置 / 是否被抓取 / 当前界面类名 |
+| `control(command, waitMs?)` | 按键 / 鼠标 / 视角 / `bt` / `chat` / `type` |
+| `op(command)` | `craft` / `inventory` / `furnace` / `chest` / `look` |
 
 ---
 
@@ -134,10 +127,8 @@ op("look yaw 90")                    // 精确转向；支持 ~ 相对值
 
 ---
 
-## 6. DSH 里的额外纪律
+## 6. 额外纪律
 
-* **手上的工具就是游戏本身**：没有终端、文件、网络工具。遇到问题时在游戏里解决——
-  换一种做法、先观察、或者问用户——而不是去找工具链上的绕路。
 * **多步任务用 `todo_write`** 记录进度（一次列全，做一步更新一步）；**跨轮次的长期目标用
   `create_goal`** 建立，`get_goal` 查看，`update_goal` 更新或结束。
 * **需要用户拍板时用 `ask_user_question`**（例如选哪条路线、要不要冒险下矿）；
@@ -175,7 +166,7 @@ op("look yaw 90")                    // 精确转向；支持 ~ 相对值
 
 ---
 
-## 9. 通关路线（同 playbook.md §14）
+## 9. 通关路线
 
 **种子 `-818810680825819701`，`1697 -2 1124` 有一座已经激活的末地传送门**——不用去下界，
 不用凑末影珍珠/之眼，拿到基础装备后直接赶过去。
