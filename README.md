@@ -199,7 +199,7 @@ curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetch
 [`playbook.md`](playbook.md) 是真正交给模型的那份文档，只写「正式游玩时该怎么做」。
 在 DSH 里用它的 MCP 版：[`playbook-dsh.md`](playbook-dsh.md)——游戏策略、坐标、路线与之一致，
 但接口层全部换成 MC 模式的工具（`player()`、`control(...)`、`op(...)`），
-并补了 DSH 特有的纪律（工具面只有游戏、`todo_write` / `create_goal` 的用法、上下文预算）。
+并补了 DSH 特有的纪律（工具面只有游戏、工具调用与上下文预算）。
 
 * 一个端口（3420：`/ctl` 控制 / `/aif` 信息 / `/op` 容器操作）的接口与字段（`GET :3420/`、`GET :3420/ctl/`、`GET :3420/aif/`、`GET :3420/op/` 全文的精简版）
 * **状态与回显**：`/info`、`/inventory`、`/world` 的字段含义，`/msg` 的增量聊天回显
@@ -207,7 +207,7 @@ curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetch
   （`<声音ID> <音量> <音高>`，每播放一次一行；`/keysnd` 与 `/sound` 共用队列，只给重要声音）
 * **输入通道实测结论**：`E` 开背包、`1`-`9` 切格、`Q` 丢弃都通过 HTTP 有效；
   发文本一律走 `chat <文本>` / `bt <命令>`，不通过聊天框打字；
-  聊天框开着时 `E`/`Q`/`1`-`9` 会自动先关掉它，`W` 等移动键不受影响（详见手册 §4）
+  聊天框开着时 `E`/`Q`/`1`-`9` 会自动先关掉它，`W` 等移动键不受影响（详见手册 §2.1）
 * `cmdCraft` 五条 `POST /op` 子命令（`craft` / `inventory` / `furnace` / `chest` / `look`）的前置条件、参数与常用物品 id
 * 「观察 → 决策 → 执行 → 校验」的循环节奏，以及截图延迟、对账、记坐标这些注意事项
 * 固定分辨率下的坐标表（仅在**没有 cmdCraft**、必须手点时兜底：先 `GET :3420/ctl/mouse` 读光标，再 `mouse goto`）
