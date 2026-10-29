@@ -14,24 +14,25 @@
 
 | 工具 | 用途 | 读法要点 |
 | --- | --- | --- |
-| `player()` | 坐标/朝向/血量/饱食度 | 判断“有没有真的在动”只能靠它 |
+| `player()` | 坐标/朝向/血量/饱食度/目标方块/光照 | 判断“有没有真的在动”只能靠它；也用来确认准星落点 |
 | `world()` | 时间/天气/维度 | 时间过 12000 是黄昏，`thunder` 别在外面晃 |
 | `screenshot()` | 界面/地形确认 | 可能有延迟，两张一样不代表命令失败；一屏能答的问题别连截三张 |
 | `chat()` | 指令输出、Baritone 输出、报错 | 不要靠截图猜 |
 | `sounds()` | 判断挖到没有/附近有没有怪 | 读完即清空，不要连读 |
 | `inventory()` | 背包/容器对账 | 界面打开时会额外显示容器内容 |
+| `killaura("state")` | 自动攻击的目标与命中记录 | `target:null` = 范围内没有合法目标；`lastAttack` 为最近一次实际攻击 |
 
 ### 1.3 决策循环
 
-① 观察  player() + inventory() + world() + cursor()
+① 观察  player() + inventory() + world() + cursor()（自动攻击时 + killaura("state")）
 ② 决策  结合目标，判断当下情况
-③ 执行  control(...) 或 op(...)
+③ 执行  control(...) / op(...) / baritone(...) / killaura(...)
 ④ 校验  op 看返回；control 后读 chat()，再读一次状态对账
    回到 ①
 
 ### 1.4 对账、回显与上下文纪律
 
-- `bt mine` 没有数量参数：定期看，够了立刻 `control("bt stop")`。
+- `bt mine` 没有数量参数：定期看，够了立刻 `baritone("stop")`。
 - 长时间任务定期 `player()`；掉血、有怪、天黑就撤。
 - 记坐标：基地、工作台、熔炉。
 - 上下文预算：`screenshot()` 和 `help(...)` 全文都很大，按需取。
@@ -55,17 +56,39 @@
 站定 → `op("look pitch 40")` 瞄 2~3 格外地面 → `control("mouse right")` 放置 → 再 `mouse right` 一次打开 → `op(...)` 操作 → `ESC` 关闭。
 
 - 脚下那块方块上无法放置。
+- 右键/放置没反应时先 `player()` 看 `目标方块`：`未选中` = 准星不在方块上，用 `op("look …")` 调整；不要先截图猜。
 
 ### 2.3 Baritone 使用纪律
 
-- Baritone 有任务状态；换目标或死亡后先 `control("bt stop")`，再看回显。
+一条命令一个 `baritone(...)`，请求体就是命令本身：
+
+```text
+baritone("stop")
+baritone("goto 1697 -2 1124")
+baritone("mine hay_block")
+```
+
+下文把 `baritone("<命令>")` 简写成 `bt <命令>`。
+
+- 一次只执行一条；多行会 400，拆成多次。
+- Baritone 有任务状态；换目标或死亡后先 `bt stop`，再看回显。
 - 天黑后不要 `bt goto` 长途：Baritone 不还手，会被一路跟死。
 - `bt mine <方块>` 的危险：`bt mine chest` 会认定地下箱子更近，直接挖竖井；`bt mine red_bed` 同样会往下钻。
 - 只有确认目标在地表时才用 `bt mine`；使用时每 10 秒 `player()`，y 掉超过 5 格立刻 `bt stop`。
 - 找容器/床/矿石不用 `bt mine`，改成“走过去 + 右键 + `inventory()` 读容器”。
 - `bt mine` 的数量控制见 §1.4。
+- 输出仍在 `chat()` 里；`baritone(..., waitMs)` 能等一会儿再看。
 
-### 2.4 合成与错误处理
+### 2.4 Kill Aura
+
+- 开关：`killaura("on")` / `killaura("off")` / `killaura("toggle")`（幂等）；`killaura("reload")` 重读配置。
+- 状态：`killaura("state")` 返回 `enabled` / `inWorld` / `player` / `config` / `target` / `lastAttack`；`target` 为 `null` 表示没有合法目标。
+- 配置：`killaura("config", {...})` 部分更新，字段与 `config/killaura.json` 同名：`range`、`fov`、`rotation`、`priority`、`minAttackCharge`、`targetPlayers`、`attackHostile`、`attackFriendlyDrops`、`attackFriendlyNoDrops`、`denyTargets`、`alwaysTargetsHigh/Medium/Low/Lowest`、`targetArmorStands`、`ignoreInvisible`、`throughWalls`、`pauseInScreens`、`pauseWhileUsingItem`。
+- 目标分敌意 / 中立 / 友善有掉落 / 友善无掉落；中立生物只能由 `alwaysTargets*` 命中；`denyTargets` 优先于所有 always。
+- 选择顺序：`alwaysTargetsHigh` ＞ 普通敌意 ＞ `alwaysTargetsMedium` ＞ 普通友善有掉落 ＞ `alwaysTargetsLow` ＞ 普通友善无掉落 ＞ `alwaysTargetsLowest`；同一档内才看 `priority`。
+- `config` 全有或全无：任一字段非法返回 400，文件不改；开关状态不持久化。
+
+### 2.5 合成与错误处理
 
 - 合成返回「配方未解锁」：服务端没装 `unlockRecipe` 时配方书要自己攒；先凑材料解锁。
 - `op("craft …")` 报「请先放下鼠标光标上持有的物品」：合成产物卡在光标上，`ESC` 关界面再开一次。
@@ -101,7 +124,7 @@
 
 ### 3.5 撤退条件
 
-任一出现就 `bt stop` 撤回安全处：
+任一出现就 `baritone("stop")` 撤回安全处：
 
 掉血、火把用完/周围全黑、听到/看到怪物、饱食度见底、天黑了还在地表。
 
@@ -109,10 +132,10 @@
 
 ## 4. 死亡处理
 
-1. `control("bt stop")` + `control("release")` —— Baritone 任务状态跨死亡存活。
+1. `baritone("stop")` + `control("release")` —— Baritone 任务状态跨死亡存活。
 2. 立刻 `player()` 记死亡坐标（此时仍是死亡地点，血量 0）。
 3. 重生：`control("TAB")` + `control("ENTER")`。
-4. `control("bt goto <x> <y> <z>")` 回去回收；路上会自动捡起掉落物。
+4. `baritone("goto <x> <y> <z>")` 回去回收；路上会自动捡起掉落物。
 5. 到了先 `inventory()` 对账，再决定下一步。
 
 **掉落物按“区块加载时长”计时（约 5 分钟）**：区块卸载时计时暂停，实际窗口比 5 分钟宽松。
@@ -155,7 +178,7 @@
 | 1 | 干草块 → 面包；砍树攒原木；床/重生点 | 重生点已在村庄 |
 | 2 | 铁：村庄交易或受控浅层坑采 | 铁镐 + 盾 + 少量铁甲 |
 | 3 | 备进末地物资：食物、圆石垫脚块、床（炸龙）、弓+箭（可选） | 圆石 ≥ 64、食物 ≥ 30 |
-| 4 | `control("bt goto 1697 -2 1124")`，约 1400 格 | 到传送门附近 |
+| 4 | `baritone("goto 1697 -2 1124")`，约 1400 格 | 到传送门附近 |
 | 5 | 传送门在 y=-2，埋在地下：自己挖下去，边走边插火把 | 站到传送门框上 |
 | 6 | 跳进传送门 → 末地 → 打龙 | 龙死 |
 
@@ -185,5 +208,6 @@
 生存    time>12000 停户外；饱食度<18 不回血；火把=熔炉+原木+木板
 光源    熔炉烧 oak_log（木板当燃料）→ charcoal → craft torch
 放置    look pitch 40 → mouse right → 再 mouse right 打开
-死亡    bt stop + release → 记坐标 → 重生 → bt goto 回收
+自动攻击 killaura("on") 开、killaura("off") 关；killaura("state") 看 target / lastAttack
+死亡    baritone("stop") + release → 记坐标 → 重生 → baritone("goto …") 回收
 ```

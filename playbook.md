@@ -13,16 +13,17 @@
 
 ```sh
 curl -s http://127.0.0.1:3420/                       # 接口索引；连不上 = 服务没起
-for p in ctl aif op; do
+for p in ctl aif op bt ka; do
   curl -s -o /dev/null -w "$p %{http_code}\n" -I "http://127.0.0.1:3420/$p/"
 done
 curl -s http://127.0.0.1:3420/aif/info                # 409 / no world loaded = 未进世界
+curl -s http://127.0.0.1:3420/ka/state                # 自动攻击状态；enabled 默认 false
 curl -s http://127.0.0.1:3420/aif/msg                 # 上一步的回显
 ```
 
 * `GET /` 通但某个前缀不是 200：对应模组没挂上。
 * `/aif/info` 返回 `no world loaded (still on a menu?)`：客户端在主菜单或加载界面。
-* 语法拿不准时读权威全文：`GET /ctl/`、`GET /aif/`、`GET /op/`（**内容较长，按需读**）。
+* 语法拿不准时读权威全文：`GET /ctl/`、`GET /aif/`、`GET /op/`、`GET /bt/`、`GET /ka/`（**内容较长，按需读**）。
 
 装了哪些模组，决定了能用哪些手段：
 
@@ -30,24 +31,26 @@ curl -s http://127.0.0.1:3420/aif/msg                 # 上一步的回显
 | --- | --- |
 | **MGHttpdProvider**（必需） | 端口 3420 上什么都没有，mcctl 和 AdvancedInfoFetcher 都挂不上 |
 | **mcctl**（必需） | 什么都做不了 |
-| AdvancedInfoFetcher | 只能靠截图判断背包、血量、聊天回显和声音 |
+| AdvancedInfoFetcher | 只能靠截图判断背包、血量、聊天回显、声音、准星目标方块和光照 |
 | cmdCraft | 合成/冶炼只能去点 GUI 格子（有 `/ctl/mouse` + `mouse goto` 兜底，但仍容易点错） |
+| KillAura | 只能自己按 `mouse left` 砍怪 |
 | unlockRecipe（服务端模组） | 配方书是空的：`craft` 只能做**已经解锁**的配方，其余一律 `400 找不到可以合成 <物品> 的配方（配方未解锁或不存在）` |
-| Baritone | 只能一步步按键走路、手动挖矿 |
+| Baritone + MGBaritoneConnector | 没装 Baritone 只能一步步按键走路、手动挖矿；只装 Baritone 而没有连接器时 `POST /bt` 直接 404，`bt` 命令完全不可用 |
 
-`bt` 命令依赖 Baritone；没装时它只会往聊天栏发 `#...`，不会执行。
+`/bt` 由 MGBaritoneConnector 提供（请求体就是一条 Baritone 命令），它硬依赖 Baritone。
 
 ### 1.2 观测工具与读法
 
 | 接口 | 用途 | 读法要点 |
 | --- | --- | --- |
-| `GET /aif/info` | 坐标/朝向/血量/饱食度 | 判断“有没有真的在动”只能靠它 |
+| `GET /aif/info` | 坐标/朝向/血量/饱食度/准星目标方块 | 判断“有没有真的在动”只能靠它；瞄准/放置前也用它确认落点 |
 | `GET /aif/world` | 时间/天气/维度 | 时间过 12000 是黄昏，`thunder` 别在外面晃 |
 | `GET /ctl/prtsc` | 界面/地形确认 | 可能有延迟，两张一样不代表命令失败；一屏能答的问题别连截三张 |
 | `GET /aif/msg` | 指令输出、Baritone 输出、报错 | 不要靠截图猜 |
 | `GET /aif/keysnd` | 判断挖到没有/附近有没有怪 | 读完即清空，不要连读 |
 | `GET /aif/inventory` | 背包/容器对账 | 界面打开时会额外显示容器内容 |
 | `GET /ctl/mouse` | 光标位置 | 只在必须手点 GUI 时用 |
+| `GET /ka/state` | 自动攻击的目标与命中记录 | `target:null` = 范围内没有合法目标；`lastAttack` 为最近一次实际攻击 |
 
 截图：
 
@@ -62,12 +65,16 @@ curl -s -o /tmp/mc.png http://127.0.0.1:3420/ctl/prtsc
 | `玩家` | 用户名 |
 | `坐标` | 精确坐标，2 位小数；记下基地、熔炉、矿洞口的坐标 |
 | `方块` | 所在方块坐标（整数） |
+| `目标方块` | 准星指向方块的完整命名空间 ID（如 `minecraft:oak_log`）；天空/实体/空气/命中结果未刷新时为 `未选中` |
+| `光照` | 目标方块位置的原始光照 0–15（不做昼夜天空光衰减，不是相邻面）：方块光为 0 时 `光照：天空光 <n>（此方块不发光）`，否则 `光照：<最大值> (方块光 <n> / 天空光 <n>)`；`未选中` 时没有这一行 |
 | `方位` / `yaw` / `pitch` | 朝向角度，1 位小数；pitch=90 是正下方，pitch=-90 是正上方 |
 | `选中` | 快捷栏选中格 1–9 |
 | `生命值` / `饱食度` / `饱和度` | 危险判断：血少就撤，饿了自己找吃的 |
 | `效果：` | 仅有效果时出现；每行 `<效果ID> <等级> <剩余秒数>` |
 
 死亡时 `生命值：0.0`，`坐标` 仍是**死亡地点**；要在重生前读一次并记下。
+
+放置、右键、挖掘前先读 `目标方块`：`未选中` 说明准星不在方块上，用 `look` 调，不要靠截图猜。
 
 **`GET /aif/world`** 的字段：
 
@@ -113,10 +120,10 @@ curl -s -o /tmp/mc.png http://127.0.0.1:3420/ctl/prtsc
 ### 1.3 决策循环
 
 ```text
-① 观察  GET /aif/info + /aif/inventory + /aif/world + /ctl/mouse
+① 观察  GET /aif/info + /aif/inventory + /aif/world + /ctl/mouse（自动攻击时 + /ka/state）
 ② 决策  结合目标，判断当下情况
-③ 执行  POST /ctl（按键/鼠标/Baritone/聊天）或 POST /op（合成/冶炼/存取/转向）
-④ 校验  POST /op 看 HTTP 响应；POST /ctl 后读 /aif/msg，再读一次状态对账
+③ 执行  POST /ctl（按键/鼠标/聊天）、POST /bt（Baritone）、POST /op（合成/冶炼/存取/转向）、POST /ka（开关自动攻击）
+④ 校验  POST /op 看 HTTP 响应；POST /ctl·/bt 后读 /aif/msg，再读一次状态对账
    ↺ 回到 ①
 ```
 
@@ -127,10 +134,10 @@ curl -s -o /tmp/mc.png http://127.0.0.1:3420/ctl/prtsc
 
 ### 1.4 对账、回显与上下文纪律
 
-* `bt mine` 没有数量参数：定期看 `/aif/inventory`，够了立刻 `POST /ctl 'bt stop'`。
+* `bt mine` 没有数量参数：定期看 `/aif/inventory`，够了立刻 `POST /bt 'stop'`。
 * 长时间任务定期 `GET /aif/info`；掉血、有怪、天黑就撤。
 * 记坐标：基地、工作台、熔炉、矿洞口、传送门。
-* 上下文预算：`/ctl/prtsc` 和 `GET /ctl/`、`GET /aif/`、`GET /op/` 全文都很大，按需取。
+* 上下文预算：`/ctl/prtsc` 和 `GET /ctl/`、`GET /aif/`、`GET /op/`、`GET /bt/`、`GET /ka/` 全文都很大，按需取。
 * 读 `/aif/msg`：指令输出、Baritone 输出、报错都在里面，不要靠截图猜。
 * 读 `/aif/keysnd`：判断挖到没有/附近有没有怪，读完即清空，不要连读。
 * 读 `/aif/world`：时间接近 12000 就该停止户外作业。
@@ -155,7 +162,7 @@ curl -s -o /tmp/mc.png http://127.0.0.1:3420/ctl/prtsc
 | 特判 | `esc`、`F3` | ✅ | `esc` 关界面，世界里开暂停菜单 |
 | 滚轮 | `mouse scroll n` | ✅ 但一次只走一格 | 切格用 `POST /op 'inventory …'` 更省事 |
 
-发文本一律用 `POST /ctl 'chat <文本>'` 和 `POST /ctl 'bt <命令>'`，**不打开聊天框打字**。
+发文本一律用 `POST /ctl 'chat <文本>'`；Baritone 命令走 `POST /bt '<命令>'`。**不打开聊天框打字**。
 
 聊天框开着时：
 
@@ -210,16 +217,21 @@ curl -s -X POST --data-binary 'mouse right'   http://127.0.0.1:3420/ctl
 
 * 脚下那块方块上无法放置；目标格也不能被自己的碰撞箱占据。窄隧道里贴脸放常失败，先后退 1–2 格。
 * 放完读 `GET /aif/keysnd` 确认：出现 `minecraft:block.stone.place`（或对应方块）就是放成功了；只有右键音、没有放置音就是没放上。
-* 右键方块没反应时：多半是准星没落在方块上。用 `F3` 打开调试信息后截图，看准星实际对着哪里，再用 `look` 调 `pitch`。
+* 右键方块没反应时：先看 `GET /aif/info` 的 `目标方块`；`未选中` 就是准星没落在方块上，用 `look` 调 `pitch` / `yaw`。仍对不上再用 `F3` 调试屏截图。
 
 ### 2.3 Baritone 使用纪律
 
+Baritone 命令一律 `POST :3420/bt`，请求体就是命令本身：
+
 ```sh
-curl -s -X POST --data-binary 'bt stop'                  http://127.0.0.1:3420/ctl
-curl -s -X POST --data-binary 'bt goto 1697 -2 1124'     http://127.0.0.1:3420/ctl
-curl -s -X POST --data-binary 'bt mine hay_block'        http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'stop'                  http://127.0.0.1:3420/bt
+curl -s -X POST --data-binary 'goto 1697 -2 1124'     http://127.0.0.1:3420/bt
+curl -s -X POST --data-binary 'mine hay_block'        http://127.0.0.1:3420/bt
 ```
 
+下文把 `POST /bt '<命令>'` 简写成 `bt <命令>`（`bt stop` 就是 `POST /bt 'stop'`）。
+
+* 一次请求只执行**一条**命令；多行请求返回 400，拆成多个请求。
 * Baritone 有任务状态；换目标或死亡后先 `bt stop`，再看回显。
 * 天黑后不要 `bt goto` 长途：Baritone 不还手，会被一路跟死。
 * `bt mine <方块>` 的危险：`bt mine chest` 会认定地下箱子更近，直接挖竖井；`bt mine red_bed` 同样会往下钻。
@@ -227,10 +239,73 @@ curl -s -X POST --data-binary 'bt mine hay_block'        http://127.0.0.1:3420/c
 * 找容器/床/矿石不用 `bt mine`，改成“走过去 + 右键 + `GET /aif/inventory` 读容器”。
 * **无树区域不要用 `bt mine oak_log`**：它不会放弃，而是向下挖去找废弃矿井的支撑原木，又慢又危险；先在地表用 `bt goto <远处坐标>` 定向找森林/村庄。
 * `bt mine` 的数量控制见 §1.4；`bt stop` 后必须对账。
-* Baritone 的任务跨死亡存活；死亡/中断后第一件事就是 `bt stop` + `release`。
+* Baritone 的任务跨死亡存活；死亡/中断后第一件事就是 `bt stop` + `POST /ctl 'release'`。
 * 本版本 Baritone **没有 `craft` 命令**；长距离 `bt goto` 会消耗大量饱食度，出发前备食物。
 
-### 2.4 合成与错误处理
+### 2.4 Kill Aura
+
+Kill Aura 自动攻击 `range` 内的生物，没有游戏内按键，开关和配置全部走 `/ka`；只影响客户端，不修改服务端规则。
+
+```sh
+curl -s http://127.0.0.1:3420/ka/state                # 状态 JSON
+curl -s -X POST http://127.0.0.1:3420/ka/on           # 开（幂等）
+curl -s -X POST http://127.0.0.1:3420/ka/off          # 关（幂等）
+curl -s -X POST http://127.0.0.1:3420/ka/toggle
+curl -s -X POST http://127.0.0.1:3420/ka/reload       # 重读 config/killaura.json
+curl -s -X POST -H 'Content-Type: application/json' \
+     --data-binary '{"range":4.0,"denyTargets":["minecraft:creeper"]}' \
+     http://127.0.0.1:3420/ka/config
+```
+
+状态 JSON 的字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `enabled` / `inWorld` | 是否开启 / 是否已进世界 |
+| `player` | 玩家名；未进世界时为 `null` |
+| `config` | 当前生效的配置 |
+| `target` | 现在会攻击的目标 `{name, id, distance, health}`；未开启、未进世界或没有合法目标时为 `null` |
+| `lastAttack` | 最近一次实际攻击 `{name, agoMs}`；本次启动还没打过时为 `null` |
+
+所有写操作成功后返回同一份状态。`target.name` / `lastAttack.name` 是本地化显示名。
+
+配置字段（`config/killaura.json`，与 `POST /ka/config` 的字段同名）：
+
+| 字段 | 默认 | 含义 |
+| --- | --- | --- |
+| `range` | `3.0` | 攻击距离，0.5–6.0（原版 3.0），按包围盒最近点算 |
+| `fov` | `360.0` | 三维视野锥角，1–360；360 = 不限制 |
+| `rotation` | `"visible"` | `silent` 只发转向包 / `visible` 直接改本地视角 / `none` 不转向 |
+| `priority` | `"closest"` | 档位内排序：`closest` 距离 / `lowestHealth` 血量 / `angle` 偏角 |
+| `minAttackCharge` | `0.0` | 蓄力 ≥ 该值才出手；1.0 = 只打满蓄力 |
+| `targetPlayers` | `true` | 打玩家（旁观/创造除外） |
+| `attackHostile` | `true` | 打敌意生物 |
+| `attackFriendlyDrops` | `false` | 打友善且有掉落（牛、猪、鸡…） |
+| `attackFriendlyNoDrops` | `false` | 打友善且无掉落（村民、蝙蝠…） |
+| `denyTargets` | `[]` | 永不攻击的实体类型 ID |
+| `alwaysTargetsHigh` / `Medium` / `Low` / `Lowest` | `[]` | 四档强制目标（高 → 低） |
+| `targetArmorStands` | `false` | 打盔甲架 |
+| `ignoreInvisible` | `false` | 忽略隐身目标 |
+| `throughWalls` | `false` | 无视视线遮挡 |
+| `pauseInScreens` | `true` | 打开界面时暂停 |
+| `pauseWhileUsingItem` | `true` | 使用物品时暂停 |
+
+`POST /ka/config` 只改出现的字段，全有或全无：任一字段非法返回 400，文件不写；`_help` 只读。
+
+目标分为敌意 / 中立 / 友善有掉落 / 友善无掉落；`attackHostile` / `attackFriendlyDrops` / `attackFriendlyNoDrops`
+只控制普通目标，中立生物只能由 `alwaysTargets*` 命中；蜘蛛/洞穴蜘蛛按光照在敌意与中立之间切换。
+
+**是否攻击的判定顺序**：`denyTargets` → 任一 `alwaysTargets*` → `targetPlayers` / `targetArmorStands` /
+`ignoreInvisible` / `throughWalls` → `attackHostile` / `attackFriendlyDrops` / `attackFriendlyNoDrops`。
+强制目标绕过玩家/盔甲架/隐身/视线检查，但仍受 `range`、`fov`、暂停、蓄力限制；拒绝与强制同时命中时拒绝优先。
+
+**多个合法目标的选择顺序**：`alwaysTargetsHigh` ＞ 普通敌意 ＞ `alwaysTargetsMedium` ＞ 普通友善有掉落 ＞
+`alwaysTargetsLow` ＞ 普通友善无掉落 ＞ `alwaysTargetsLowest`。同一档内才按 `priority` 评分。
+玩家/盔甲架没进 always 名单时按「友善无掉落」档排序。
+
+配置在开启（`POST /ka/on`）时重读一次；运行中手改文件后 `POST /ka/reload` 生效。开关状态不持久化，重启后为关闭。
+
+### 2.5 合成与错误处理
 
 * 合成返回「配方未解锁」：服务端没装 `unlockRecipe` 时配方书要自己攒；先凑材料解锁。
 * `POST /op 'craft …'` 报「请先放下鼠标光标上持有的物品」：合成产物卡在光标上，`ESC` 关界面再开一次。
@@ -353,7 +428,7 @@ curl -s -X POST --data-binary 'look pitch 40'  http://127.0.0.1:3420/op
 
 ### 3.5 撤退条件
 
-任一出现就 `POST /ctl 'bt stop'` 撤回安全处：
+任一出现就 `POST /bt 'stop'` 撤回安全处：
 
 掉血、火把用完/周围全黑、听到/看到怪物、饱食度见底、天黑了还在地表。
 
@@ -363,19 +438,19 @@ curl -s -X POST --data-binary 'look pitch 40'  http://127.0.0.1:3420/op
 
 死亡不是进度结束，而是**一个必须在 5 分钟内执行的回收任务**。
 
-1. `POST /ctl 'bt stop'` + `POST /ctl 'release'` —— Baritone 任务状态跨死亡存活。
+1. `POST /bt 'stop'` + `POST /ctl 'release'` —— Baritone 任务状态跨死亡存活。
 2. 立刻 `GET /aif/info` 记死亡坐标（此时仍是死亡地点，血量 0）。
 3. 重生：`POST /ctl 'TAB'` + `POST /ctl 'ENTER'`。
-4. `POST /ctl 'bt goto <x> <y> <z>'` 回去回收；死在深层可能要挖穿地形，预留时间。
+4. `POST /bt 'goto <x> <y> <z>'` 回去回收；死在深层可能要挖穿地形，预留时间。
 5. 到了先 `GET /aif/inventory` 对账，再决定下一步；回收或放弃都明确记下结论和坐标。
 
 ```sh
-curl -s -X POST --data-binary 'bt stop'  http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'stop'     http://127.0.0.1:3420/bt
 curl -s -X POST --data-binary 'release'  http://127.0.0.1:3420/ctl
 curl -s http://127.0.0.1:3420/aif/info
 curl -s -X POST --data-binary 'TAB'      http://127.0.0.1:3420/ctl
 curl -s -X POST --data-binary 'ENTER'    http://127.0.0.1:3420/ctl
-curl -s -X POST --data-binary 'bt goto 100 64 200' http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'goto 100 64 200' http://127.0.0.1:3420/bt
 curl -s http://127.0.0.1:3420/aif/inventory
 ```
 
@@ -445,19 +520,19 @@ curl -s http://127.0.0.1:3420/aif/inventory
 | 1 | 干草块 → 面包；砍树攒原木；床/重生点 | 重生点已在村庄 |
 | 2 | 铁：村庄交易或受控浅层坑采 | 铁镐 + 盾 + 少量铁甲 |
 | 3 | 备进末地物资：食物、圆石垫脚块、床（炸龙）、弓+箭（可选） | 圆石 ≥ 64、食物 ≥ 30 |
-| 4 | `POST /ctl 'bt goto 1697 -2 1124'`，约 1400 格 | 到传送门附近 |
+| 4 | `POST /bt 'goto 1697 -2 1124'`，约 1400 格 | 到传送门附近 |
 | 5 | 传送门在 y=-2，埋在地下：自己挖下去，边走边插火把 | 站到传送门框上 |
 | 6 | 跳进传送门 → 末地 → 打龙 | 龙死 |
 
 ```sh
-curl -s -X POST --data-binary 'bt goto 1697 -2 1124' http://127.0.0.1:3420/ctl
+curl -s -X POST --data-binary 'goto 1697 -2 1124' http://127.0.0.1:3420/bt
 ```
 
 ### 5.5 末地打法
 
 先拆黑曜石柱顶的水晶（弓射，或搭方块上去砍），再打龙（它停中央传送门上方是输出窗口）；备用方案是在龙附近放床并右键引爆（自己别站在爆心）。
 
-物品 id 就是原版的命名空间 ID（`minecraft:` 可省略），例如 `oak_log`、`iron_pickaxe`、`raw_iron`；`/aif/inventory` 和 `/aif/info` 输出的都是完整 ID，照着抄即可，不需要另查表。
+物品 id 就是原版的命名空间 ID（`minecraft:` 可省略），例如 `oak_log`、`iron_pickaxe`、`raw_iron`；`/aif/inventory` 的物品和 `/aif/info` 的 `目标方块` 输出的都是完整 ID，照着抄即可（`目标方块` 是方块 ID，去掉 `minecraft:` 后可直接用于 `bt mine <方块>`），不需要另查表。
 
 ---
 
@@ -479,7 +554,7 @@ curl -s -X POST --data-binary 'bt goto 1697 -2 1124' http://127.0.0.1:3420/ctl
 | `bt mine chest/red_bed` 往地下钻 | 只有确认目标在地表才用；每 10 秒 `/aif/info`，y 掉超 5 格立刻 `bt stop`；找容器/床/矿石改为走过去 + 右键 + `/aif/inventory`。详见 §2.3 |
 | 无树区域用 `bt mine oak_log` | 它会向下挖去找废弃矿井 → 先在地表 `bt goto` 定向找森林/村庄 |
 | 死亡后掉落物没回收 | 死亡瞬间读 `/aif/info` 记坐标 → `bt stop` → 重生 → `bt goto` 回去 |
-| 死亡后角色被 Baritone 拖走 | 死亡/中断第一件事 `bt stop` + `release` |
+| 死亡后角色被 Baritone 拖走 | 死亡/中断第一件事 `POST /bt 'stop'` + `POST /ctl 'release'` |
 | 死亡画面点不动 | 别用鼠标，`TAB` + `ENTER` |
 | 主菜单/选择世界点不动 | 用 `ENTER`；世界条目要先选中 |
 | `/ctl/prtsc` 里看不到鼠标 | 正常，截图不含系统光标 → 改键盘操作或读 `/ctl/mouse` |
@@ -505,7 +580,7 @@ curl -s -X POST --data-binary 'bt goto 1697 -2 1124' http://127.0.0.1:3420/ctl
 | 方块放不下去 | 目标格被自己碰撞箱占了 → 后退，先 `look pitch 40` 再对前方 2–3 格右键 |
 | 想转到确定的方向 | 用 `POST /op 'look yaw <数值>'`（相对值用 `~`）；发完读 `/aif/info` 核对 |
 | `look` 返回 `400 无效的角度值` | 数值写数字，相对值带 `~`，例如 `~-20` |
-| 右键方块没反应 | 用 `F3` + 截图看准星，通常是瞄在方块上沿之外 |
+| 右键方块没反应 | 先看 `/aif/info` 的 `目标方块`：`未选中` = 准星不在方块上，用 `look` 调；仍对不上再 `F3` + 截图 |
 | Baritone 把你带远 | `bt stop` 后读坐标记下，必要时 `bt goto` 回来 |
 | 物品分散在多格 | `inventory` 找的是第一个匹配整叠；数量对不上时先读 `/aif/inventory` 确认 |
 
@@ -515,5 +590,6 @@ curl -s -X POST --data-binary 'bt goto 1697 -2 1124' http://127.0.0.1:3420/ctl
 生存    /aif/world 时间>12000 停户外；饱食度<18 不回血；火把=熔炉+原木+木板
 光源    POST /op 'craft furnace' → 烧 oak_log（木板当燃料）→ charcoal → craft torch
 放置    POST /op 'look pitch 40' → POST /ctl 'mouse right' → 再右键打开
-死亡    POST /ctl 'bt stop' + 'release' → GET /aif/info 记坐标 → 重生 → bt goto 回收
+自动攻击 POST /ka/on 开、POST /ka/off 关；GET /ka/state 看 target / lastAttack
+死亡    POST /bt 'stop' + POST /ctl 'release' → GET /aif/info 记坐标 → 重生 → POST /bt 'goto …' 回收
 ```

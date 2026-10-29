@@ -2,12 +2,12 @@
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](LICENSE)
 
-用 LLM 玩 Minecraft 的一套方案：**三个客户端模组 + 一个服务端模组 + 一份写给模型的操作手册**，
-外带两个把这三组接口接进 MCP 生态的仓库（MCP 程序 + DeepSeek Harness 插件），再配上 Baritone（寻路）
-和 NoAutoPause（后台不暂停）更省事。
+用 LLM 玩 Minecraft 的一套方案：**一组客户端模组 + 一个服务端模组 + 一份写给模型的操作手册**，
+外带两个把五组接口接进 MCP 生态的仓库（MCP 程序 + DeepSeek Harness 插件），再配上 Baritone（寻路）、
+Kill Aura（自动攻击）和 NoAutoPause（后台不暂停）更省事。
 
-不需要模拟器，也不需要训练视觉模型——游戏里挂上这些模组，把「操作」「状态」「合成」分别变成
-`/ctl`、`/aif`、`/op` 三组 HTTP 接口，LLM 只要会发请求，就能从空手一路玩到击败末影龙。
+不需要模拟器，也不需要训练视觉模型——游戏里挂上这些模组，把「操作」「状态」「合成」「寻路」「自动攻击」分别变成
+`/ctl`、`/aif`、`/op`、`/bt`、`/ka` 五组 HTTP 接口，LLM 只要会发请求，就能从空手一路玩到击败末影龙。
 会用 MCP 的客户端可以省掉自己拼请求这一步，直接启动下面那个 MCP 程序。
 反过来，**写 Fabric 模组时它也是一套现成的实测环境**：agent 可以自己起客户端、造场景、读状态和日志
 （见下文「也能拿它开发模组」）。
@@ -17,17 +17,20 @@
 | 仓库 | 必需性 | 接口 | 作用 |
 | --- | --- | --- | --- |
 | [**MGHttpdProvider**](https://github.com/MineAgent/HttpdProvider) | **必需** | `127.0.0.1:3420` | **插座**：共享 HTTP 服务，各模组挂在它的前缀下；`GET /` 列出当前可用的 endpoint |
-| [**mcctl**](https://github.com/MineAgent/mcctl) | **必需** | `127.0.0.1:3420/ctl` | **身体**：按键 / 鼠标 / 视角 / 滚轮 / Baritone / 聊天，另有 `GET /ctl/prtsc` 截图、`GET /ctl/mouse` 光标位置（配合 `mouse goto` 绝对定位） |
-| [**AdvancedInfoFetcher**](https://github.com/MineAgent/AdvancedInfoFetcher) | 可选 | `127.0.0.1:3420/aif` | **眼睛+耳朵**：`GET /aif/info` 坐标 / 朝向 / 生命 / 饱食 / 状态效果，`GET /aif/inventory` 背包 / 副手 / 盔甲 / 熔炉 / 箱子，`GET /aif/world` 维度 / 时间 / 天气，`GET /aif/msg` 聊天栏回显，`GET /aif/sound` 播放过的声音 ID（`GET /aif/keysnd` 只看重要声音） |
+| [**mcctl**](https://github.com/MineAgent/mcctl) | **必需** | `127.0.0.1:3420/ctl` | **身体**：按键 / 鼠标 / 视角 / 滚轮 / 聊天 / 打字，另有 `GET /ctl/prtsc` 截图、`GET /ctl/mouse` 光标位置（配合 `mouse goto` 绝对定位） |
+| [**AdvancedInfoFetcher**](https://github.com/MineAgent/AdvancedInfoFetcher) | 可选 | `127.0.0.1:3420/aif` | **眼睛+耳朵**：`GET /aif/info` 坐标 / 朝向 / 生命 / 饱食 / 状态效果 / 目标方块（准星所指方块的命名空间 ID） / 光照，`GET /aif/inventory` 背包 / 副手 / 盔甲 / 熔炉 / 箱子，`GET /aif/world` 维度 / 时间 / 天气，`GET /aif/msg` 聊天栏回显，`GET /aif/sound` 播放过的声音 ID（`GET /aif/keysnd` 只看重要声音） |
 | [**cmdCraft**](https://github.com/MineAgent/cmdCraft) | 可选 | `127.0.0.1:3420/op` | **手**：一条 `POST /op` 下辖 `craft` 合成、`inventory` 换快捷栏、`furnace` 冶炼、`chest` 存取箱子、`look` 转视角 |
+| [**KillAura**](https://github.com/MineAgent/KillAura) | 可选 | `127.0.0.1:3420/ka` | **自动攻击**：`POST /ka/on` 后自动砍攻击距离内的目标；`GET /ka/state` 看当前目标，`POST /ka/config` 改配置。四类目标 + 四档强制目标 + 拒绝名单，无游戏内按键（见下文） |
 | [**unlockRecipe**](https://github.com/MineAgent/unlockRecipe) | 可选（用 cmdCraft 时建议装） | —（纯服务端，无 HTTP 接口） | **开局配方书**：谁加入世界就替谁执行 `/recipe give <玩家> *`，让 cmdCraft 从第一秒起就有整本配方可用（见下文） |
-| [**Baritone**](https://github.com/cabaletta/baritone) | 可选 | `bt` 命令 | **腿**：寻路与自动挖矿 |
+| [**Baritone**](https://github.com/cabaletta/baritone) | 可选（MGBaritoneConnector 硬依赖它） | —（由 `/bt` 调用） | **腿的引擎**：寻路与自动挖矿 |
+| [**MGBaritoneConnector**](https://github.com/MineAgent/baritone-connector) | 可选（用 Baritone 时必需） | `127.0.0.1:3420/bt` | **腿的接口**：把一条 Baritone 命令挂成 `POST /bt`；mcctl 1.6.3 起不再提供 `bt`，必须装它 |
 | [**NoAutoPause**](https://github.com/MineAgent/noautopause) | 可选 | —（无 HTTP 接口） | **后台可跑**：窗口失去焦点时不暂停游戏，切到后台 / 无人看管时客户端继续 tick（见下文） |
 | [**playbook.md**](playbook.md) | — | — | 给模型看的操作手册：接口、实测结论、坐标、流程、坑 |
 
 **MGHttpdProvider + mcctl 是硬需求**——前者提供 3420 端口，后者是身体；没有它们就没有任何接口可用。其余几个都是可选增强，但实际游玩时一般都会装上：
-没有 AdvancedInfoFetcher 就只能靠截图猜背包，没有 cmdCraft 就得去点 GUI 格子（可以用
-`GET :3420/ctl/mouse` + `mouse goto` 兜底，但仍然容易点错），没有 Baritone 就只能一步步按键走路，
+没有 AdvancedInfoFetcher 就只能靠截图看背包、准星指向的方块和光照，没有 cmdCraft 就得去点 GUI 格子（可以用
+`GET :3420/ctl/mouse` + `mouse goto` 兜底，但仍然容易点错），没有 MGBaritoneConnector + Baritone 就只能一步步
+按键走路，没有 KillAura 就只能自己按 `mouse left` 砍怪，
 没有 NoAutoPause 则单人存档一失去焦点就暂停——把游戏丢在后台操作时，注入的按键全部落空。
 
 除了 unlockRecipe，其余模组都是**客户端**模组，服务端不需要装任何东西，可以在原版 / Fabric / Paper 服务器上用；
@@ -36,16 +39,19 @@
 
 ## 接进 MCP（可选）
 
-不想自己拼 HTTP 请求的客户端，可以再装这两个仓库：它们把 `/ctl`、`/aif`、`/op` 变成一个 MCP 程序，
-并给 DeepSeek Harness 配好一个只留游戏能力的「MC 模式」。
+不想自己拼 HTTP 请求的客户端，可以再装这两个仓库：它们把 `/ctl`、`/aif`、`/op`、`/bt`、`/ka` 变成一个 MCP 程序，
+并给 DeepSeek Harness 配好「MC 模式」与「MC 模式+」两个 agent preset。
 
 | 仓库 | 作用 |
 | --- | --- |
-| [**MCPServer**](https://github.com/MineAgent/MCPServer) | **MCP stdio 程序**：把三组接口包成 11 个工具——`status` / `help` / `player` / `inventory` / `world` / `chat` / `sounds` / `screenshot` / `cursor` / `control` / `op`；任何支持 stdio 的 MCP 客户端都能直接启动，也可以 `import` 当库用。游戏没开时工具返回一句可读的中文错误，而不是超时 |
-| [**MCPServerDSHPlug**](https://github.com/MineAgent/MCPServerDSHPlug) | **DeepSeek Harness bundle**：一行 `dsh-mcp-client` 配置把上面的程序接进 profile（工具名 `mcp__minecraft__*`），并声明「MC 模式」agent preset——工具面收到 `mcp__minecraft__*` 加 `todo_write` / `create_goal` / `get_goal` / `update_goal` / `exit_plan_mode` / `ask_user_question`，系统提示词只讲游戏里的操作节奏，玩法留给用户在对话里说 |
+| [**MCPServer**](https://github.com/MineAgent/MCPServer) | **MCP stdio 程序**：把五组接口包成 14 个工具——`status` / `help` / `player` / `inventory` / `world` / `chat` / `sounds` / `screenshot` / `cursor` / `control` / `op` / `baritone` / `killaura` / `request`；任何支持 stdio 的 MCP 客户端都能直接启动，也可以 `import` 当库用。游戏没开时工具返回一句可读的中文错误，而不是超时 |
+| [**MCPServerDSHPlug**](https://github.com/MineAgent/MCPServerDSHPlug) | **DeepSeek Harness bundle**：声明「MC 模式」与「MC 模式+」两个 preset，各自用 `dsh-mcp-client` 启动上面的程序（工具名 `mcp__minecraft__*`）；两个模式之外看不到这些工具 |
 
-**推荐用「MC 模式」跑下面这份手册。** 它只保留游戏工具（`mcp__minecraft__*` 加少量流程工具），
-agent 遇到卡点只能在游戏里换做法、先观察或者问用户；换成标准模式这类通用模式，它手里还有终端和文件工具，
+* **MC 模式**：`mcp__minecraft__*` 加 `todo_write` / `create_goal` / `get_goal` / `update_goal` / `exit_plan_mode` / `ask_user_question`；系统提示词只讲游戏里的操作节奏，玩法留给用户在对话里说。
+* **MC 模式+**：标准模式的全部工具加 `mcp__minecraft__*`；系统提示词与标准模式一致，适合一边改代码/跑命令一边用游戏接口做真机验证。
+
+**只玩游戏时用「MC 模式」跑下面这份手册。** 它只保留游戏工具（`mcp__minecraft__*` 加少量流程工具），
+agent 遇到卡点只能在游戏里换做法、先观察或者问用户；换成「MC 模式+」或「标准模式」这类带终端和文件工具的模式，
 很容易转去写脚本、直接 `curl` 3420、翻日志，甚至动手改模组——把「玩游戏」变成「折腾环境」。
 
 ```bash
@@ -53,7 +59,7 @@ git clone git@github.com:MineAgent/MCPServer.git && cd MCPServer
 npx --yes pnpm@12 install
 node bin/minecraft-mcp-bridge.mjs --help          # --url 可指向别的端口
 
-# DeepSeek Harness：装完新建一个「MC 模式」任务
+# DeepSeek Harness：装完新建任务；游玩选「MC 模式」，开发模组选「MC 模式+」
 dsh plugin --profile web add github:MineAgent/MCPServerDSHPlug
 ```
 
@@ -69,18 +75,21 @@ dsh plugin --profile web add github:MineAgent/MCPServerDSHPlug
 1. `./gradlew build` 出 jar，拷进 `~/.minecraft/mods/`；
 2. 用一份启动脚本起客户端（例如 `TestSave.sh` 里的 `--quickPlaySingleplayer <存档>`，直接进世界，不用点菜单）；
 3. 等 3420 起来后先自检：`GET /` 看端点在不在、`GET /aif/world` 确认**真的进了世界**，而不是靠 sleep 猜；
-4. 要什么场景就用接口造：`POST /ctl` 按键 / 鼠标 / 聊天 / `bt` 指令，`POST /op` 合成、换快捷栏、开关熔炉和箱子；
+4. 要什么场景就用接口造：`POST /ctl` 按键 / 鼠标 / 聊天 / `type`，`POST /bt` 一条 Baritone 命令，
+   `POST /ka` 开关自动攻击，`POST /op` 合成、换快捷栏、开关熔炉和箱子；
 5. 判结果不用猜：`GET /ctl/prtsc` 截图，`GET /aif/msg` 读聊天栏回显（模组自己的输出、报错、Baritone 反馈都在里面），
-   `GET /aif/info`·`/inventory`·`/world` 读状态，`GET /aif/keysnd` 听关键声音；再加上直接读
+   `GET /aif/info`·`/inventory`·`/world` 读状态（`/info` 的 `目标方块` 可直接确认准星落点），
+   `GET /ka/state` 确认自动攻击有没有真的命中，`GET /aif/keysnd` 听关键声音；再加上直接读
    `~/.minecraft/logs/latest.log` 和 `crash-reports/`（这两样走文件工具，不经过 3420）；
 6. 对不上就回去改代码，从第 1 步重来；测完把实例停掉。
 
 配上上面那个可选的 [noautopause](https://github.com/MineAgent/noautopause)，游戏可以一直丢在后台，
 agent 不需要抢你正在用的窗口——`./gradlew build` 和游戏实例互不打扰。
 
-**这时候不要用「MC 模式」。** MC 模式的工具面被收成只剩 `mcp__minecraft__*`：agent 读写不了源码、
-跑不了 gradle、也看不到 `latest.log`，它只能「玩」，没法「改」。开发模组要用**标准模式这类带终端和
-文件工具的通用模式**，把 MC 工具当成其中一个能力——一边改代码，一边用上面那套接口做真机验证。
+**开发模组时用「MC 模式+」，不要用「MC 模式」。** MC 模式只剩 `mcp__minecraft__*`：agent 读写不了源码、
+跑不了 gradle、也看不到 `latest.log`，它只能「玩」，没法「改」。「MC 模式+」是标准模式的全部工具加
+`mcp__minecraft__*`，系统提示词与标准模式一致——可以一边改代码、跑 gradle、读 `latest.log`，一边用
+上面那套接口做真机验证，不需要再手动把 MC 工具接进标准模式。
 
 本仓库提到的这些模组自己就是这么长出来的：**除了 mcctl 的第一个版本，之后每一次迭代、
 以及其余模组的开发，基本都是「构建 → 起客户端 → 用 3420 观察和操作 → 读日志 → 改代码」这样滚出来的**。
@@ -112,24 +121,26 @@ cmdCraft 的 `craft` 走的是**客户端配方书**：只有已经解锁的配�
 ## 它是怎么玩的
 
 ```
-        ┌────────────────────────────────┐
-        │  GET :3420/aif/info                │  我在哪、面朝哪、还剩多少血
-        │  GET :3420/aif/inventory           │  背包 / 副手 / 盔甲 / 熔炉 / 箱子
-        │  GET :3420/aif/world               │  维度 / 时间 / 天气
-        │  GET :3420/aif/msg                 │  聊天栏回显：指令输出 / Baritone / 报错
-        │  GET :3420/aif/sound  /keysnd      │  播放过的声音 ID（/keysnd 只看重要的）
-        └───────────────┬────────────────┘
+        ┌─────────────────────────────────────┐
+        │  GET :3420/aif/info                 │  我在哪、面朝哪、还剩多少血
+        │  GET :3420/aif/inventory            │  背包 / 副手 / 盔甲 / 熔炉 / 箱子
+        │  GET :3420/aif/world                │  维度 / 时间 / 天气
+        │  GET :3420/aif/msg                  │  聊天栏回显：指令输出 / Baritone / 报错
+        │  GET :3420/aif/sound  /keysnd       │  播放过的声音 ID（/keysnd 只看重要的）
+        │  GET :3420/ka/state                 │  自动攻击状态 / 当前目标
+        └───────────────┬─────────────────────┘
                         │ ① 观察
                         ▼
                   ┌───────────┐
                   │    LLM    │  ② 决定下一步
                   └─────┬─────┘
                         │ ③ 执行
-        ┌───────────────▼────────────────┐
-        │  POST :3420/ctl  'bt mine iron_ore'     腿
-        │  POST :3420/op   'craft iron_pickaxe'   手
-        │  POST :3420/ctl  'W 500' / 'mouse left' 身体
-        └───────────────┬────────────────┘
+        ┌───────────────▼─────────────────────┐
+        │  POST :3420/bt   'mine iron_ore'    │  腿
+        │  POST :3420/op   'craft iron_pickaxe'│  手
+        │  POST :3420/ka/on                   │  自动攻击
+        │  POST :3420/ctl  'W 500' 'mouse left'│  身体
+        └───────────────┬─────────────────────┘
                         │ ④ 校验
                         ▼
               GET :3420/aif/msg 读回显 + /keysnd 听动静 + GET :3420/ctl/prtsc 看一眼画面，回到 ①
@@ -138,12 +149,14 @@ cmdCraft 的 `craft` 走的是**客户端配方书**：只有已经解锁的配�
 实际的请求：
 
 ```bash
-curl -s http://127.0.0.1:3420/aif/info                                        # 坐标/朝向/生命
+curl -s http://127.0.0.1:3420/aif/info                                        # 坐标/朝向/生命/目标方块
 curl -s http://127.0.0.1:3420/aif/inventory                                   # 背包/副手/盔甲/熔炉/箱子
 curl -s http://127.0.0.1:3420/aif/world                                       # 维度/时间/天气
 curl -s http://127.0.0.1:3420/aif/msg                                         # 上次读之后的聊天回显
 curl -s http://127.0.0.1:3420/aif/keysnd                                      # 上次读之后的重要声音
-curl -s -X POST --data-binary 'bt mine iron_ore'          http://127.0.0.1:3420/ctl
+curl -s http://127.0.0.1:3420/ka/state                                        # 自动攻击状态/当前目标
+curl -s -X POST http://127.0.0.1:3420/ka/on
+curl -s -X POST --data-binary 'mine iron_ore'             http://127.0.0.1:3420/bt
 curl -s -X POST --data-binary 'craft iron_pickaxe'        http://127.0.0.1:3420/op
 curl -s -X POST --data-binary 'inventory torch 2'         http://127.0.0.1:3420/op
 curl -s -X POST --data-binary 'look yaw 90'               http://127.0.0.1:3420/op
@@ -154,7 +167,7 @@ curl -s -o shot.png http://127.0.0.1:3420/ctl/prtsc
 
 * **mcctl = 身体（必需）**：把游戏变成可编程接口。输入走原版管线（`KeyMapping` / `Screen` 事件），
   视角旋转会正常同步给服务器，不抢占真实键鼠。只装它一个，LLM 就已经能玩了——只是玩得很笨。
-* **AdvancedInfoFetcher = 眼睛 + 耳朵（可选）**：LLM 不需要看懂画面，坐标、朝向、血量、背包、熔炉燃烧进度全部是纯文本；
+* **AdvancedInfoFetcher = 眼睛 + 耳朵（可选）**：LLM 不需要看懂画面，坐标、朝向、血量、背包、熔炉燃烧进度、准星指向的方块和光照全部是纯文本；
   `GET /msg` 还把聊天栏回显也变成纯文本——指令报错、Baritone 的输出不用再靠截图去认；
   `GET /sound` / `GET /keysnd` 更进一步，把播放过的声音 ID（破坏方块、怪物、爆炸；`/keysnd` 已滤掉脚步/音乐/环境音/UI/天气）也变成文本，
   "刚才发生了什么"不用截图就能判断；`GET /world` 则给出维度、时间和天气。
@@ -164,10 +177,15 @@ curl -s -o shot.png http://127.0.0.1:3420/ctl/prtsc
   和玩家亲手点格子完全等价，服务端照常校验（1.3.2 起从聊天指令 `/cmdop` 改成了 HTTP 接口，命令语法与报错不变）。
   `look` 再把「转视角」从鼠标像素换算变成一个精确命令：
   绝对角度直接给，相对角度写 `~`，改的就是 `/info` 里的 `yaw` / `pitch`。
+* **KillAura = 自动攻击（可选）**：把「按住左键砍怪」变成 `POST :3420/ka/on` 一个开关。它每 tick 在 `range` 内挑一个目标、
+  转向、`attack`；配置有距离、视野锥、转向方式、攻击蓄力。目标分敌意 / 中立 / 友善有掉落 / 友善无掉落四类，
+  另有四档 `alwaysTargets*` 强制名单和 `denyTargets` 拒绝名单；它只负责攻击，不负责移动。
 * **unlockRecipe = 开局配方书（服务端，可选）**：cmdCraft 只认已经解锁的配方，新存档里配方书要自己攒；
   它让玩家一加入世界就拿到整本配方书（`/recipe give <玩家> *`），是 cmdCraft 在「新存档 / 新玩家」
   场景下的补丁，省掉了开作弊 + 第二个账号的绕路。
-* **Baritone = 腿（可选）**：`bt mine` / `bt goto` 负责寻路和挖矿，比逐步按键高效得多。
+* **Baritone = 腿（可选）**：`bt mine` / `bt goto` 负责寻路和挖矿，比逐步按键高效得多。控制接口由
+  [MGBaritoneConnector](https://github.com/MineAgent/baritone-connector) 挂在 `/bt`（请求体就是一条 Baritone 命令）；
+  mcctl 1.6.3 起不再内置 `bt`，只装 Baritone 不会出现 `/bt`。
 * **NoAutoPause = 后台可跑（可选）**：这套方案本来就是「游戏在后台，agent 通过 3420 操作」，
   而原版在单人存档里一失去焦点就暂停（失焦 500ms 后自动弹出暂停菜单），世界不再 tick，
   注入的按键和 `bt` 命令全部落空。它只把 `Options.pauseOnLostFocus` 置为 `false`（只写一次），
@@ -181,8 +199,9 @@ curl -s -o shot.png http://127.0.0.1:3420/ctl/prtsc
 # 1. 需要 Minecraft 26.2 + Fabric Loader 0.19.5+
 # 2. 必需的：MGHttpdProvider（3420 端口）+ mcctl
 cp httpdprovider-*.jar mcctl-*.jar ~/.minecraft/mods/
-# 3. 强烈建议一起装的三个（可选，但少了会难受）
-cp advanced-info-fetch-*.jar craftcmd-*.jar ~/.minecraft/mods/   # Baritone 另见其仓库
+# 3. 强烈建议一起装（可选，但少了会难受）：眼睛 + 手 + 腿 + 自动攻击
+cp advanced-info-fetch-*.jar craftcmd-*.jar ~/.minecraft/mods/
+cp killaura-*.jar mgbaritoneconnector-*.jar ~/.minecraft/mods/   # Baritone 本体另见其仓库
 # 4. 后台跑：窗口失焦也不暂停，无人看管时注入的按键才有效（可选，后台操作建议装）
 cp noautopause-*.jar ~/.minecraft/mods/
 # 5. 服务端模组：新存档里想直接用 cmdCraft 合成，就把它也放进 mods/（单人存档同样有效）
@@ -191,6 +210,8 @@ cp unlockrecipe-*.jar ~/.minecraft/mods/
 curl http://127.0.0.1:3420/            # 当前可用的 endpoint 列表
 curl http://127.0.0.1:3420/ctl/        # mcctl 使用说明
 curl http://127.0.0.1:3420/op/         # cmdCraft 使用说明（装了 cmdCraft 才有）
+curl http://127.0.0.1:3420/bt/         # Baritone 接口说明（装了 MGBaritoneConnector 才有）
+curl http://127.0.0.1:3420/ka/         # Kill Aura 使用说明（装了 KillAura 才有）
 curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetcher 才有）
 ```
 
@@ -198,17 +219,19 @@ curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetch
 
 [`playbook.md`](playbook.md) 是真正交给模型的那份文档，只写「正式游玩时该怎么做」。
 在 DSH 里用它的 MCP 版：[`playbook-dsh.md`](playbook-dsh.md)——游戏策略、坐标、路线与之一致，
-但接口层全部换成 MC 模式的工具（`player()`、`control(...)`、`op(...)`），
-并补了 DSH 特有的纪律（工具面只有游戏、工具调用与上下文预算）。
+但接口层全部换成 `mcp__minecraft__*` 工具（`player()`、`control(...)`、`op(...)`、`baritone(...)`、`killaura(...)`；MC 模式 / MC 模式+ 都提供），
+并补了 DSH 特有的纪律（MC 模式下工具面只有游戏、工具调用与上下文预算）。
 
-* 一个端口（3420：`/ctl` 控制 / `/aif` 信息 / `/op` 容器操作）的接口与字段（`GET :3420/`、`GET :3420/ctl/`、`GET :3420/aif/`、`GET :3420/op/` 全文的精简版）
-* **状态与回显**：`/info`、`/inventory`、`/world` 的字段含义，`/msg` 的增量聊天回显
+* 一个端口（3420：`/ctl` 控制 / `/aif` 信息 / `/op` 容器操作 / `/bt` 寻路 / `/ka` 自动攻击）的接口与字段（`GET :3420/`、`GET :3420/ctl/`、`GET :3420/aif/`、`GET :3420/op/`、`GET :3420/bt/`、`GET :3420/ka/` 全文的精简版）
+* **状态与回显**：`/info`（含 `目标方块`、`光照`）、`/inventory`、`/world` 的字段含义，`/msg` 的增量聊天回显
   （指令输出 / Baritone / 报错，读取即清空），以及 `/sound`·`/keysnd` 的增量声音回显
   （`<声音ID> <音量> <音高>`，每播放一次一行；`/keysnd` 与 `/sound` 共用队列，只给重要声音）
 * **输入通道实测结论**：`E` 开背包、`1`-`9` 切格、`Q` 丢弃都通过 HTTP 有效；
-  发文本一律走 `chat <文本>` / `bt <命令>`，不通过聊天框打字；
+  发文本一律走 `chat <文本>`（聊天/指令）和 `POST :3420/bt '<命令>'`（Baritone），不通过聊天框打字；
   聊天框开着时 `E`/`Q`/`1`-`9` 会自动先关掉它，`W` 等移动键不受影响（详见手册 §2.1）
 * `cmdCraft` 五条 `POST /op` 子命令（`craft` / `inventory` / `furnace` / `chest` / `look`）的前置条件、参数与常用物品 id
+* Kill Aura 的 `/ka` 接口（`state` / `on` / `off` / `toggle` / `reload` / `config`）与配置字段：敌意 / 中立 / 友善有掉落 /
+  友善无掉落四类目标、四档 `alwaysTargets*`、`denyTargets`、判定与七档选择顺序（详见手册 §2.4）
 * 「观察 → 决策 → 执行 → 校验」的循环节奏，以及截图延迟、对账、记坐标这些注意事项
 * 固定分辨率下的坐标表（仅在**没有 cmdCraft**、必须手点时兜底：先 `GET :3420/ctl/mouse` 读光标，再 `mouse goto`）
 * 指定种子与那座已激活的末地传送门，以及从空手到末影龙的路线
@@ -232,19 +255,25 @@ curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetch
 | 光标接口 | `GET :3420/ctl/mouse` 在暂停菜单给出 `光标：427.0 240.0`、`抓取：否`、`界面：PauseScreen`；`mouse goto 321 202` + `mouse left` 点中「进度」按钮 |
 | 光标在窗口外 | 把指针移到窗口外后 `/mouse` 输出 `光标：不在窗口内，请使用 mouse goto <x> <y>`（用跨平台的 `GLFW_HOVERED` 判断）；照常 `mouse goto` + `mouse left` 仍能点中，且物理指针被拉回窗口内 |
 | 状态接口 | `/info` 的坐标、朝向、选中格与游戏内一致 |
+| 目标方块 | 准星对准方块时 `/info` 返回完整命名空间 ID（实测树叶为 `minecraft:oak_leaves`）；对准天空/实体时返回 `目标方块：未选中`，且没有 `光照` 行 |
+| 目标方块光照 | 方块光为 0 时输出 `光照：天空光 <实际值>（此方块不发光）`；发光方块（如萤石，方块光 15）走 `光照：<最大值> (方块光 <n> / 天空光 <n>)` 格式 |
 | 世界接口 | `/world` 的维度、时间、天数、游戏刻和天气跟随游戏（`/time set` 后 `时间` 立即变化） |
 | 聊天回显 | `/msg` 增量返回玩家聊天、指令输出、Baritone 输出与报错，逐条与客户端日志的 `[CHAT]` 一致，读完再次请求为空 |
 | 声音回显 | `/sound` 增量返回播出音效的命名空间 ID、请求音量与音高；挖石头得到 `minecraft:block.stone.break`，未知/被静音跳过的音效不出现 |
 | 重要声音 | `/keysnd` 过滤掉脚步/音乐/ambient/ui/天气，只留破坏方块、怪物、爆炸等；与 `/sound` 共用一个队列 |
 | 失焦不暂停 | 装 [NoAutoPause](https://github.com/MineAgent/noautopause)：把窗口焦点交给另一个 X 窗口后，`/ctl/mouse` 仍是 `界面：无`、`抓取：是`，`/world` 的 `游戏刻` 继续增长；同一个实例**不装**它时（`options.txt` 里 `pauseOnLostFocus:true`），失焦 500ms 后变成 `界面：PauseScreen`、`抓取：否`，世界停止 tick |
-| Baritone | `bt mine oak_log`、`bt mine stone`、`bt mine iron_ore` 自动寻路挖掘并拾取（实测把玩家从 y=48 带到 y=18） |
+| Baritone | `POST :3420/bt 'mine oak_log'`、`'mine stone'`、`'mine iron_ore'` 自动寻路挖掘并拾取（实测把玩家从 y=48 带到 y=18） |
+| Kill Aura | `POST :3420/ka/on` 后自动攻击范围内的僵尸（实测把召唤的僵尸砍死），`lastAttack` 记下这只目标；`off` 后不再攻击 |
+| Kill Aura 目标规则 | 四档强制目标的实测顺序 high 羊 > 普通僵尸 > medium 牛 > 普通猪 > low 蝙蝠 > 普通村民 > lowest 狼；`denyTargets` 优先于 `alwaysTargetsHigh`；狼、末影人等中立生物默认不打，进 `alwaysTargets*` 后才打；蜘蛛按光照（白天 `target:null`）。详见 KillAura 仓库 README 的验证记录 |
+| Kill Aura 配置 | `POST :3420/ka/config` 合法 patch 立即生效并写回 `config/killaura.json`；越界 `range:99`、未知字段、旧字段 `targetHostile`、坏 JSON 均返回 400 且文件不变；旧 `targetPassive` / `alwaysTargets` 会自动迁移 |
 | 合成 | 原木 → 木板 → 工作台 → 木镐 → 石镐 |
 | 冶炼 | `POST :3420/op 'furnace put raw raw_iron'`、`'furnace put fuel coal'`、`'furnace get product'` 取出铁锭 |
 | 端到端 | 空手 → 原木 → 工作台 → 木镐 → 石镐 → 熔炉 → 铁矿 → 铁锭 → **铁镐**，全程只用 HTTP（`E` 开背包 + `POST :3420/op 'craft …'`，不点 GUI） |
 
-另外，[MCPServer](https://github.com/MineAgent/MCPServer) 在同一个实例上实测过：11 个工具全部可用，
-`screenshot` 直接返回 854×480 的 PNG，`control F3` 注入后截图里能看到调试屏出现、坐标与 `/aif/info` 一致，
-再按一次 `F3` 复原；`chat` / `sounds` 这类增量回显读完再次请求为空。
+另外，[MCPServer](https://github.com/MineAgent/MCPServer) 也接过同一个实例：它的 `screenshot` 直接返回
+854×480 的 PNG，`control F3` 注入后截图里能看到调试屏出现、坐标与 `/aif/info` 一致，再按一次 `F3` 复原；
+`chat` / `sounds` 这类增量回显读完再次请求为空。它现在注册 14 个工具（含 `baritone` / `killaura` / `request`），
+`killaura` 的配置字段与 Kill Aura 1.3.0 对齐；工具列表与 schema 用 `node test/list-tools.mjs` 离线自检。
 
 目标是走完整条链：**挖矿 → 铁器 → 末地 → 末影龙。**
 
@@ -256,7 +285,7 @@ curl http://127.0.0.1:3420/aif/info    # 玩家状态（装了 AdvancedInfoFetch
 ```
 README.md        本文件
 playbook.md      给模型看的操作手册
-playbook-dsh.md  同一份手册的 DSH / MC 模式版
+playbook-dsh.md  同一份手册的 DSH 版（MC 模式 / MC 模式+）
 LICENSE          CC BY-NC-SA 4.0
 ```
 
@@ -268,11 +297,12 @@ LICENSE          CC BY-NC-SA 4.0
 （署名—非商业性使用—相同方式共享 4.0 国际），完整文本见 [`LICENSE`](LICENSE)：
 可以自由复制、分发、改编，但必须署名、不得用于商业用途、且衍生作品需以相同许可分发。
 
-文档里提到的五个模组是代码，仍按各自的许可分发——
+文档里提到的七个模组是代码，仍按各自的许可分发——
 [mcctl](https://github.com/MineAgent/mcctl)、[AdvancedInfoFetcher](https://github.com/MineAgent/AdvancedInfoFetcher)、
-[cmdCraft](https://github.com/MineAgent/cmdCraft)、[unlockRecipe](https://github.com/MineAgent/unlockRecipe)
-与 [noautopause](https://github.com/MineAgent/noautopause)
-均为 **LGPL-3.0-only**。
+[cmdCraft](https://github.com/MineAgent/cmdCraft)、[unlockRecipe](https://github.com/MineAgent/unlockRecipe)、
+[noautopause](https://github.com/MineAgent/noautopause)、[KillAura](https://github.com/MineAgent/KillAura)
+与 [MGBaritoneConnector](https://github.com/MineAgent/baritone-connector)
+均为 **LGPL-3.0-only**；上游 [Baritone](https://github.com/cabaletta/baritone) 仍是它自己的许可。
 
 本文档另外提到的两个仓库同样是「代码 + 文档」分开授权：
 [MCPServer](https://github.com/MineAgent/MCPServer) 与
