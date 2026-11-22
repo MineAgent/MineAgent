@@ -25,7 +25,7 @@ DeepSeek Harness 的 `mc_*` 工具。在 DSH 里选「MC 模式」就能从空�
 | [**Baritone**](https://github.com/cabaletta/baritone) | 可选（MGBaritoneConnector 硬依赖它） | — | **腿的引擎**：寻路与自动挖矿 |
 | [**MGBaritoneConnector**](https://github.com/MineAgent/baritone-connector) | 可选（用 Baritone 时必需） | `/bt` | **腿的接口**：把一条 Baritone 命令挂成 `POST /bt` |
 | [**NoAutoPause**](https://github.com/MineAgent/noautopause) | 可选 | — | **后台可跑**：窗口失去焦点时不暂停游戏，后台注入的按键才有效 |
-| [**dsh-mc-connect**](https://github.com/MineAgent/dsh-mc-connect) | 用 DSH 时必需 | 直连 `3420` / `3422` | **DSH 插件**：注册「MC 模式」「MC 模式+」，提供 19 个 `mc_*` 工具、2 个事件工具和 Web 订阅界面 |
+| [**dsh-mc-connect**](https://github.com/MineAgent/dsh-mc-connect) | 用 DSH 时必需 | 直连 `3420` / `3422` | **DSH 插件**：注册「MC 模式」「MC 模式+」，提供完整的 `mc_*` 工具集、2 个事件工具和 Web 订阅界面 |
 | [**playbook.md**](playbook.md) | — | — | **给模型的 DSH 操作手册**：事件、生存、合成、寻路、战斗、路线与坑 |
 
 **MGHttpdProvider + mcctl 是硬需求**：前者提供 3420 端口，后者是身体。其余模组都是可选增强，但实战一般都会装：
@@ -47,8 +47,8 @@ dsh plugin --profile web add "link:$PWD"
 
 | preset | 工具面 | 用途 |
 | --- | --- | --- |
-| **MC 模式** | 19 个 `mc_*` + 2 个事件工具 + `todo_write` / goal / `ask_user_question` / `exit_plan_mode`；隐藏 `working_directory`，没有文件、终端、联网、子 Agent | 只玩游戏 |
-| **MC 模式+** | 标准模式全部工具 + 19 个 `mc_*` + 2 个事件工具 | 一边改代码 / 跑命令，一边真机验证 |
+| **MC 模式** | `mc_*` + 2 个事件工具 + `todo_write` / goal / `ask_user_question` / `exit_plan_mode`；隐藏 `working_directory`，没有文件、终端、联网、子 Agent | 只玩游戏 |
+| **MC 模式+** | 标准模式全部工具 + `mc_*` + 2 个事件工具 | 一边改代码 / 跑命令，一边真机验证 |
 
 ### 工具
 
@@ -57,11 +57,11 @@ dsh plugin --profile web add "link:$PWD"
 | 自检/说明 | `mc_status`、`mc_help` | 检查服务、前缀、是否进世界；读模组自带的权威说明 |
 | 观测 | `mc_player`、`mc_inventory`、`mc_world`、`mc_chat`、`mc_screenshot`、`mc_cursor` | 状态 / 背包 / 世界 / 聊天 / 截图 / 光标 |
 | 输入 | `mc_control` | 按键 / 鼠标 / 聊天 / 打字，可带 `waitMs` |
-| 合成与容器 | `mc_craft`、`mc_hotbar`、`mc_furnace`、`mc_chest`、`mc_look`、`mc_eat`、`mc_mine` | 合成 / 换快捷栏 / 熔炉 / 箱子 / 转向 / 进食 / 挖单个方块 |
+| 合成与容器 | `mc_craft`、`mc_hotbar`、`mc_furnace`、`mc_chest`、`mc_look`、`mc_eat`、`mc_mine`、`mc_place` | 合成 / 换快捷栏 / 熔炉 / 箱子 / 转向 / 进食 / 挖单个方块 / 放置方块 |
 | 移动与战斗 | `mc_baritone`、`mc_killaura` | 寻路、采集、停止；自动攻击开关与配置 |
 | 兜底 | `mc_request` | 调用尚未封装成专用工具的 `/` 开头 endpoint |
 
-完整参数、返回值和错误文案见 [`dsh-mc-connect` 的 README](https://github.com/MineAgent/dsh-mc-connect#工具19-个)。
+完整参数、返回值和错误文案见 [`dsh-mc-connect` 的 README](https://github.com/MineAgent/dsh-mc-connect#readme)。
 
 ### 事件订阅
 
@@ -82,7 +82,7 @@ dsh plugin --profile web add "link:$PWD"
 观察    mc_status / mc_player / mc_inventory / mc_world / mc_chat / mc_screenshot / mc_cursor
 决策    结合事件、当前目标、背包和世界时间判断下一步
 执行    mc_control / mc_craft / mc_hotbar / mc_furnace / mc_chest / mc_look / mc_eat / mc_mine /
-        mc_baritone / mc_killaura
+        mc_place / mc_baritone / mc_killaura
 校验    看工具返回，再读 mc_chat + mc_player / mc_inventory 对账
 ```
 
